@@ -33,7 +33,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/leadfinder"]
-artifacts = ["src/leadfinder/assets/*"]  # vendored Leaflet (third-party)
+artifacts = [
+    "src/leadfinder/assets/*",  # vendored Leaflet (third-party)
+    "src/leadfinder/web/*",  # web app frontend
+]
 
 [tool.ruff]
 line-length = 100

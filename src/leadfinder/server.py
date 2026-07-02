@@ -1,26 +1,54 @@
-"""Local web app server (stdlib http.server): live map search over Overture.
+"""Local web app server (stdlib http.server): serves the frontend + a JSON API.
 
-Bound to 127.0.0.1 by default. The HTTP shell is thin; all logic lives in the
-pure endpoint functions (geocode/search/verify), which are unit-tested with fakes.
+Bound to 127.0.0.1 by default (use --host 0.0.0.0 for a container/LAN). The HTTP
+shell is thin; all logic lives in pure endpoint functions, which are unit-tested
+with fakes. The frontend is real static files under web/ (served here), not
+Python string templates.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import pandas as pd
 
 from .analytics import lead_records
+from .categories import BUSINESS_CATEGORIES
 from .config import Settings
 from .geo import bbox_center, bbox_from_center
-from .geocode import city_bbox
+from .geocode import city_bbox, suggest_places
 from .logging_setup import get_logger
 from .sources.overture import fetch_overture_bbox
 from .verify import verify_rows
-from .webui import render_app_page
+
+_WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
+_ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
+
+# Whitelisted static routes -> (filename, directory, content-type).
+_STATIC: dict[str, tuple[str, str, str]] = {
+    "/": ("index.html", _WEB_DIR, "text/html; charset=utf-8"),
+    "/index.html": ("index.html", _WEB_DIR, "text/html; charset=utf-8"),
+    "/app.css": ("app.css", _WEB_DIR, "text/css; charset=utf-8"),
+    "/app.js": ("app.js", _WEB_DIR, "text/javascript; charset=utf-8"),
+    "/leaflet.css": ("leaflet.css", _ASSETS_DIR, "text/css; charset=utf-8"),
+    "/leaflet.js": ("leaflet.js", _ASSETS_DIR, "text/javascript; charset=utf-8"),
+}
+
+
+def read_static(path: str) -> tuple[bytes, str] | None:
+    entry = _STATIC.get(path)
+    if not entry:
+        return None
+    name, directory, ctype = entry
+    file_path = os.path.join(directory, name)
+    if not os.path.isfile(file_path):
+        return None
+    with open(file_path, "rb") as f:
+        return f.read(), ctype
 
 
 def _records_from_leads(leads) -> list[dict]:
@@ -28,6 +56,28 @@ def _records_from_leads(leads) -> list[dict]:
     if not leads:
         return []
     return lead_records(pd.DataFrame([lead.to_row() for lead in leads]))
+
+
+def config_endpoint(settings: Settings) -> dict:
+    return {
+        "defaultLocation": settings.cities[0] if settings.cities else "Covington LA",
+        "defaultRadius": int(settings.radius_miles) if settings.radius_miles else 10,
+        "minConfidence": settings.min_confidence,
+        "categories": [
+            {"key": key, "label": key.replace("_", " ").title()} for key in BUSINESS_CATEGORIES
+        ],
+    }
+
+
+def suggest_endpoint(params: dict, suggester=suggest_places) -> dict:
+    query = (params.get("q") or "").strip()
+    if len(query) < 3:
+        return {"suggestions": []}
+    try:
+        return {"suggestions": suggester(query)}
+    except Exception as exc:  # surface autocomplete failure quietly
+        get_logger().warning("suggest failed: %s", exc)
+        return {"suggestions": []}
 
 
 def geocode_endpoint(params: dict, geocoder=city_bbox) -> dict:
@@ -52,11 +102,14 @@ def search_endpoint(
         return {"error": "invalid radius"}
     radius = max(0.5, min(radius, 100))
 
+    label = None
     if payload.get("q"):
         try:
-            center = bbox_center(geocoder(payload["q"]))
+            bbox = geocoder(payload["q"])
         except Exception as exc:
             return {"error": f"could not find '{payload['q']}': {exc}"}
+        center = bbox_center(bbox)
+        label = payload["q"]
     elif payload.get("lat") is not None and payload.get("lon") is not None:
         center = (float(payload["lat"]), float(payload["lon"]))
     else:
@@ -80,6 +133,7 @@ def search_endpoint(
         "center": list(center),
         "radius_miles": radius,
         "bbox": list(bbox),
+        "label": label,
         "count": len(leads),
         "leads": _records_from_leads(leads),
     }
@@ -113,10 +167,14 @@ def make_handler(settings: Settings):
 
         def do_GET(self):
             route = urlparse(self.path)
-            if route.path in ("/", "/index.html"):
-                self._send(
-                    200, render_app_page(settings).encode("utf-8"), "text/html; charset=utf-8"
-                )
+            static = read_static(route.path)
+            if static is not None:
+                self._send(200, static[0], static[1])
+            elif route.path == "/api/config":
+                self._send(200, config_endpoint(settings))
+            elif route.path == "/api/suggest":
+                params = {k: v[0] for k, v in parse_qs(route.query).items()}
+                self._send(200, suggest_endpoint(params))
             elif route.path == "/api/geocode":
                 params = {k: v[0] for k, v in parse_qs(route.query).items()}
                 self._send(200, geocode_endpoint(params))
@@ -157,7 +215,10 @@ def serve(settings: Settings, host: str = "127.0.0.1", port: int = 8000) -> None
 def main(**overrides) -> None:
     host = overrides.pop("host", None) or "127.0.0.1"
     port = int(overrides.pop("port", None) or 8000)
-    # Web app defaults to Overture (no key needed); ignore an accidental google source.
-    overrides.setdefault("source", "overture")
+    overrides.setdefault("source", "overture")  # web app is keyless (Overture)
+    # The web app searches any location interactively, so it can boot without a
+    # configured city - fall back to a default initial location.
+    if not os.getenv("SEARCH_CITIES") and not overrides.get("cities"):
+        overrides["cities"] = ["Covington LA"]
     settings = Settings.from_env(**overrides)
     serve(settings, host=host, port=port)

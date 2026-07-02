@@ -145,3 +145,31 @@ def city_bbox(city: str, cache_path: str | None = None, client: httpx.Client | N
     cache[city] = list(bbox)
     _save_cache(cache_path, cache)
     return bbox
+
+
+def suggest_places(query: str, limit: int = 5, client: httpx.Client | None = None) -> list[dict]:
+    """Autocomplete: top Nominatim matches for a partial query.
+
+    Returns [{label, lat, lon}]. Empty for very short queries.
+    """
+    query = (query or "").strip()
+    if len(query) < 3:
+        return []
+    own_client = client is None
+    if own_client:
+        client = httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=10)
+    try:
+        resp = client.get(NOMINATIM_URL, params={"q": query, "format": "json", "limit": limit})
+        resp.raise_for_status()
+        results = resp.json()
+    finally:
+        if own_client:
+            client.close()
+
+    out: list[dict] = []
+    for r in results:
+        try:
+            out.append({"label": r["display_name"], "lat": float(r["lat"]), "lon": float(r["lon"])})
+        except (KeyError, ValueError, TypeError):
+            continue
+    return out

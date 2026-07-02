@@ -90,21 +90,31 @@ but pins, radius, and the worklist still work.
 
 ---
 
-## Interactive web app
+## Web app (the real frontend)
 
-For changing location and radius *live* (fetching more leads as you widen the
-search), run the local web app:
+The primary interactive surface is a served web app with a real OpenStreetMap
+street map:
 
 ```bash
 uv run leadfinder serve            # http://127.0.0.1:8000
 ```
 
-Search any location, drag the **radius slider** (a bigger radius re-queries
-Overture and shows more businesses), plot every result on a real street map,
-click **Verify** to probe domains and drop the ones that actually have a site,
-and **Export CSV**. Local-only by default; needs internet for the map tiles.
-The `scrape` command also takes `--radius <miles>` to widen the area for the
-static dashboard.
+It's a proper workspace - a street map beside a scrollable results panel:
+
+- **Location search** with autocomplete; **radius slider** that live re-queries
+  Overture (bigger radius = more businesses) and draws the radius on the map.
+- **Score-colored pins** and lead **cards** stay in sync - click a pin or a card
+  to highlight both; call/email links on each.
+- **Verify** probes candidate domains and dims the ones that actually have a
+  site; **Export** downloads the current results (with a `contacted` column).
+- **Check leads off** as you contact them (persisted), hide-contacted, light/dark.
+
+Because it's served over HTTP, the street tiles just work (no sandbox
+restrictions). It runs locally by default; to put it on a shareable URL, see
+[docs/DEPLOY.md](docs/DEPLOY.md) (Docker / Render / Fly - no key, no database).
+
+The single-file **dashboard** (`leadfinder dashboard`) still exists as an
+offline/exportable snapshot; the web app is the live tool.
 
 ---
 
@@ -200,12 +210,14 @@ src/leadfinder/
   scrape.py          source-agnostic scrape loop
   probe.py           async HTTP domain probing
   verify.py          verify pipeline
-  analytics.py       interactive worklist dashboard (map + radius)
-  server.py          local web app (stdlib http.server)
-  webui.py           web app HTML page
+  analytics.py       exportable worklist dashboard (map + radius)
+  server.py          web app server (stdlib http.server) + JSON API
+  web/               real frontend: index.html, app.css, app.js
   assets/            vendored Leaflet (third-party)
   cli.py             command-line interface
 tests/
+Dockerfile           container for deploying the web app
+docs/DEPLOY.md       hosting recipe (Docker / Render / Fly)
 ```
 
 ---

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Leadfinder</title>
+  <link rel="stylesheet" href="/leaflet.css">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="toolbar">
+    <div class="brand">Leadfinder</div>
+
+    <div class="search">
+      <input id="loc" type="search" autocomplete="off" spellcheck="false"
+             placeholder="Search a location, e.g. Mandeville LA">
+      <ul id="suggest" class="suggest" hidden></ul>
+    </div>
+
+    <label class="ctl radius-ctl">
+      <span>Radius</span>
+      <input id="radius" type="range" min="1" max="30" step="1" value="10">
+      <span id="rlabel" class="mono">10 mi</span>
+    </label>
+
+    <select id="cat" class="ctl" aria-label="Category filter">
+      <option value="">All categories</option>
+    </select>
+
+    <button id="search-btn" class="btn" type="button">Search</button>
+    <button id="verify-btn" class="btn ghost" type="button">Verify</button>
+    <button id="export-btn" class="btn ghost" type="button">Export</button>
+    <button id="theme-btn" class="btn ghost icon" type="button" title="Toggle light/dark">&#9681;</button>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <main class="workspace">
+    <section class="map-pane">
+      <div id="map"></div>
+      <div id="overlay" class="overlay" hidden>
+        <div class="spinner"></div>
+        <span id="overlay-text">Searching...</span>
+      </div>
+    </section>
+
+    <aside class="results">
+      <div class="results-head">
+        <div class="results-count"><strong id="result-count">No search yet</strong>
+          <span id="result-sub" class="muted"></span></div>
+        <div class="results-tools">
+          <span id="progress-text" class="muted"></span>
+          <label class="mini"><input type="checkbox" id="hide-done"> Hide contacted</label>
+        </div>
+      </div>
+      <div id="cards" class="cards">
+        <div class="empty">Search a location to find local businesses with no website.</div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="/leaflet.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -2,7 +2,27 @@ import json
 
 import httpx
 
-from leadfinder.geocode import USER_AGENT, city_bbox, expand_city_query
+from leadfinder.geocode import USER_AGENT, city_bbox, expand_city_query, suggest_places
+
+
+def test_suggest_places(monkeypatch):
+    import httpx as _httpx
+
+    def handler(request):
+        assert request.headers["user-agent"] == USER_AGENT
+        return _httpx.Response(
+            200,
+            json=[{"display_name": "Mandeville, St. Tammany, LA", "lat": "30.36", "lon": "-90.06"}],
+        )
+
+    client = _httpx.Client(
+        transport=_httpx.MockTransport(handler), headers={"User-Agent": USER_AGENT}
+    )
+    out = suggest_places("Mandeville", client=client)
+    client.close()
+    assert out[0]["label"].startswith("Mandeville")
+    assert out[0]["lat"] == 30.36
+    assert suggest_places("ab") == []  # too short -> no network call
 
 
 def test_expand_city_query():

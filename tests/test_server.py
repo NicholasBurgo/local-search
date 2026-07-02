@@ -1,6 +1,13 @@
 from leadfinder.config import Settings
 from leadfinder.models import Lead
-from leadfinder.server import geocode_endpoint, search_endpoint, verify_endpoint
+from leadfinder.server import (
+    config_endpoint,
+    geocode_endpoint,
+    read_static,
+    search_endpoint,
+    suggest_endpoint,
+    verify_endpoint,
+)
 
 BBOX = (-90.17, 30.43, -90.05, 30.55)
 
@@ -80,6 +87,34 @@ def test_search_reports_fetch_error():
 
     out = search_endpoint({"lat": 30, "lon": -90, "radius_miles": 5}, _settings(), fetch=boom)
     assert "error" in out and "s3 down" in out["error"]
+
+
+def test_config_endpoint():
+    out = config_endpoint(_settings())
+    assert out["defaultLocation"] == "Covington LA"
+    assert out["defaultRadius"] >= 1
+    assert isinstance(out["categories"], list) and out["categories"][0]["key"]
+
+
+def test_suggest_endpoint():
+    def fake(q):
+        return [{"label": "Mandeville, LA", "lat": 30.36, "lon": -90.06}]
+
+    out = suggest_endpoint({"q": "Mande"}, suggester=fake)
+    assert out["suggestions"][0]["label"].startswith("Mandeville")
+    # too short: no suggester call, empty result
+    assert suggest_endpoint({"q": "ab"})["suggestions"] == []
+
+
+def test_read_static_serves_frontend():
+    index = read_static("/")
+    assert index is not None
+    body, ctype = index
+    assert b"Leadfinder" in body and "text/html" in ctype
+    assert read_static("/app.js") is not None
+    assert read_static("/app.css") is not None
+    assert read_static("/leaflet.js") is not None
+    assert read_static("/nope") is None  # not whitelisted
 
 
 def test_verify_endpoint():
