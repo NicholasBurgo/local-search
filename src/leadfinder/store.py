@@ -13,6 +13,8 @@ import threading
 
 import duckdb
 
+from .models import normalize_phone
+
 # Source columns (from analytics.lead_records) that a fresh search may refresh.
 _SOURCE_COLS = [
     "name",
@@ -153,6 +155,8 @@ class LeadStore:
             rec = {}
             for k, v in zip(cols, row, strict=True):
                 rec[k] = v.isoformat() if hasattr(v, "isoformat") else v
+            if "phone" in rec:
+                rec["phone"] = normalize_phone(rec["phone"])
             out.append(rec)
         return out
 

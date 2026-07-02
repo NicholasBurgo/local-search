@@ -6,8 +6,32 @@ tests of field masks, usage tracking, and CSV handling.
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, fields
 from enum import Enum
+
+_NON_DIGIT = re.compile(r"\D")
+
+
+def normalize_phone(raw) -> str:
+    """Format a US phone as "(XXX) XXX-XXXX".
+
+    Handles the assorted shapes sources return (e.g. "+19858457455",
+    "19858457455", "9858457455", "985-845-7455"). A leading US country code is
+    dropped. Anything that is not a 10-digit US number is returned trimmed but
+    otherwise untouched, so odd/foreign values are never mangled or lost.
+    """
+    if raw is None:
+        return ""
+    s = str(raw).strip()
+    if not s:
+        return ""
+    digits = _NON_DIGIT.sub("", s)
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    if len(digits) == 10:
+        return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+    return s
 
 
 class FieldProfile(str, Enum):

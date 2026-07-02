@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 from .logging_setup import get_logger
+from .models import normalize_phone
 
 # Columns embedded per lead for the client-side table.
 _RECORD_FIELDS = [
@@ -148,6 +149,7 @@ def lead_records(df: pd.DataFrame) -> list[dict]:
         for field in _RECORD_FIELDS:
             value = row[field] if field in present else ""
             rec[field] = "" if pd.isna(value) else value
+        rec["phone"] = normalize_phone(rec.get("phone"))
         for col, series in numeric.items():
             v = series.iloc[i]
             if pd.isna(v):

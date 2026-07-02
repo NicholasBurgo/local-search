@@ -8,6 +8,7 @@
 
   const state = {
     center: null, radius: 10, leads: [], selected: null,
+    searched: false,  // true only after a live Overture search (controls the radius ring)
     checked: load("lf.checked", {}) || {},  // offline mirror of "on the list" (by key)
     hideDone: !!load("lf.hide", false),
     cfg: { defaultLocation: "Covington LA", defaultRadius: 10, categories: [] },
@@ -87,7 +88,7 @@
       m.addTo(LAYER); markers[k] = m;
     });
     if (RING) { MAP.removeLayer(RING); RING = null; }
-    if (state.center) RING = L.circle(state.center, { radius: state.radius * 1609.34, color: "#0E6B5C", weight: 1, fill: false, dashArray: "5,5", interactive: false }).addTo(MAP);
+    if (state.searched && state.center) RING = L.circle(state.center, { radius: state.radius * 1609.34, color: "#0E6B5C", weight: 1, fill: false, dashArray: "5,5", interactive: false }).addTo(MAP);
     if (fit && pts.length) { try { MAP.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 15 }); } catch (e) { /* ignore */ } }
     else if (fit && state.center) MAP.setView(state.center, 12);
   }
@@ -155,6 +156,7 @@
     overlay(false);
     if (res.error) { banner(res.error, "error"); return; }
     state.center = res.center; state.leads = res.leads || []; state.selected = null;
+    state.searched = true;
     renderAll(true);
     banner(res.count + " businesses with no website on file within " + state.radius + " mi. Add the good ones to your list, then open the List tab.", "ok");
   }
@@ -189,12 +191,14 @@
     try { res = await api("/api/saved"); } catch (e) { res = { error: String(e) }; }
     overlay(false);
     if (res.error) { banner(res.error, "error"); return; }
-    state.leads = res.leads || []; state.selected = null;
+    state.leads = res.leads || []; state.selected = null; state.searched = false;
     const pts = state.leads.map(coordOf).filter(Boolean);
     if (pts.length) { let la = 0, lo = 0; pts.forEach((p) => { la += p[0]; lo += p[1]; }); state.center = [la / pts.length, lo / pts.length]; }
     renderAll(true);
     const st = res.stats || {};
-    banner((res.count || 0) + " stored leads (" + (st.listed || 0) + " on your list).", "ok");
+    banner(res.count
+      ? res.count + " saved leads from the database (" + (st.listed || 0) + " on your list). Search a location to pull fresh ones."
+      : "No saved leads yet. Search a location to pull businesses with no website.", "ok");
   }
 
   function csvCell(v) { v = v == null ? "" : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
@@ -287,7 +291,7 @@
     } catch (e) { /* keep defaults */ }
     $("hide-done").checked = state.hideDone;
     setTimeout(() => MAP.invalidateSize(), 200);
-    await doSearch();
+    await doSaved();  // refresh shows stored leads from the DB; searching is explicit (no re-pull)
     // Optional deep-link: ?focus=<index> opens that lead's detail card on load.
     const focus = new URLSearchParams(location.search).get("focus");
     if (focus !== null) { const l = visible()[Number(focus) || 0]; if (l) selectLead(keyOf(l), false); }

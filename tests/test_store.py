@@ -66,6 +66,13 @@ def test_mark_can_clear_stage(tmp_path):
     assert s.get(["A"])["A"]["stage"] is None
 
 
+def test_saved_normalizes_phone(tmp_path):
+    s = LeadStore(str(tmp_path / "db.duckdb"))
+    s.upsert([_rec("A", phone="19858457455")])  # stored raw from the source
+    assert s.saved()[0]["phone"] == "(985) 845-7455"  # normalized on read
+    assert s.get(["A"])["A"]["phone"] == "(985) 845-7455"
+
+
 def test_update_verification(tmp_path):
     s = LeadStore(str(tmp_path / "db.duckdb"))
     s.upsert([_rec("A")])
