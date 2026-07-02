@@ -35,8 +35,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    scrape_p = sub.add_parser("scrape", help="Search Places API and collect no-website leads")
+    scrape_p = sub.add_parser("scrape", help="Collect no-website leads from the configured source")
     _add_common(scrape_p)
+    scrape_p.add_argument(
+        "--source",
+        default=None,
+        choices=["overture", "google", "both"],
+        help="Data source (default: overture - free open data, no key required)",
+    )
+    scrape_p.add_argument(
+        "--min-confidence",
+        type=float,
+        default=None,
+        help="Overture: drop places below this existence confidence, 0-1 (default: 0.5)",
+    )
+    scrape_p.add_argument(
+        "--bbox",
+        default=None,
+        help="Manual bounding box 'west,south,east,north' (skips geocoding)",
+    )
     scrape_p.add_argument(
         "--profile",
         default=None,
@@ -69,6 +86,9 @@ def _settings_overrides(args: argparse.Namespace) -> dict:
         "categories": getattr(args, "categories", None),
         "output_dir": getattr(args, "output_dir", None),
         "api_key": getattr(args, "api_key", None),
+        "source": getattr(args, "source", None),
+        "min_confidence": getattr(args, "min_confidence", None),
+        "bbox": getattr(args, "bbox", None),
         "field_profile": getattr(args, "profile", None),
         "max_results": getattr(args, "max_results", None),
         "monthly_call_budget": getattr(args, "monthly_budget", None),

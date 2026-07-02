@@ -90,6 +90,7 @@ def place_to_lead(
         curbside_pickup=_opt_bool(place, "curbside_pickup"),
         reservable=_opt_bool(place, "reservable"),
         wheelchair_accessible=wheelchair,
+        source="google",
         scraped_date=scraped_date,
         scraped_time=scraped_time,
     )

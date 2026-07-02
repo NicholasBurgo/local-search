@@ -112,6 +112,10 @@ class Lead:
     curbside_pickup: str = ""
     reservable: str = ""
     wheelchair_accessible: str = ""
+    email: str = ""
+    socials: str = ""  # pipe-joined URLs
+    source: str = ""  # which data source produced this lead (google | overture)
+    confidence: float | str = ""  # Overture existence-confidence score, 0-1
     scraped_date: str = ""
     scraped_time: str = ""
 

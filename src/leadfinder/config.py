@@ -41,18 +41,36 @@ def _pick(overrides: dict[str, Any], key: str, env_key: str, default: Any) -> An
     return env_val if env_val is not None else default
 
 
+SOURCE_CHOICES = ("overture", "google", "both")
+
+
+def _as_bbox(raw) -> tuple[float, float, float, float] | None:
+    """Parse 'W,S,E,N' (or a 4-item sequence) into a bbox tuple."""
+    if raw is None or raw == "":
+        return None
+    parts = raw.split(",") if isinstance(raw, str) else list(raw)
+    if len(parts) != 4:
+        raise ValueError("bbox must be 'west,south,east,north' (4 numbers)")
+    west, south, east, north = (float(p) for p in parts)
+    return (west, south, east, north)
+
+
 @dataclass
 class Settings:
     """All tunable settings for a scrape/verify/dashboard run."""
 
-    api_key: str
     cities: list[str]
+    api_key: str = ""  # required only when source is google/both
+    source: str = "overture"  # overture (free, no key) | google | both
     field_profile: FieldProfile = FieldProfile.ENTERPRISE
     categories: list[str] | None = None  # subset of BUSINESS_CATEGORIES keys; None = all
     max_results: int = 20  # per query; Text Search (New) caps at 20
     output_dir: str = "leads_output"
     monthly_call_budget: int = 5000  # soft ceiling on billable calls per month
     request_delay: float = 0.0  # optional politeness delay between API calls
+    overture_release: str = "2026-06-17.0"  # pinned Overture data release
+    min_confidence: float = 0.5  # drop Overture places below this existence confidence
+    bbox: tuple[float, float, float, float] | None = None  # manual override, skips geocoding
     probe_concurrency: int = 10
     probe_timeout: float = 5.0
     log_level: str = "INFO"
@@ -62,10 +80,6 @@ class Settings:
         """Build Settings from .env / environment, with keyword overrides winning."""
         load_dotenv()
 
-        api_key = _pick(overrides, "api_key", "GOOGLE_API_KEY", None)
-        if not api_key:
-            raise ValueError("GOOGLE_API_KEY not found in environment or .env file")
-
         cities = _as_list(_pick(overrides, "cities", "SEARCH_CITIES", None))
         if not cities:
             raise ValueError("SEARCH_CITIES not set. Add e.g. SEARCH_CITIES=Austin TX, Portland OR")
@@ -74,8 +88,9 @@ class Settings:
         categories = _as_list(categories_raw) or None
 
         settings = cls(
-            api_key=str(api_key),
             cities=cities,
+            api_key=str(_pick(overrides, "api_key", "GOOGLE_API_KEY", "") or ""),
+            source=str(_pick(overrides, "source", "SOURCE", "overture")).strip().lower(),
             field_profile=_as_profile(
                 _pick(overrides, "field_profile", "FIELD_PROFILE", "enterprise")
             ),
@@ -86,6 +101,11 @@ class Settings:
                 _pick(overrides, "monthly_call_budget", "MONTHLY_CALL_BUDGET", 5000)
             ),
             request_delay=float(_pick(overrides, "request_delay", "REQUEST_DELAY", 0.0)),
+            overture_release=str(
+                _pick(overrides, "overture_release", "OVERTURE_RELEASE", "2026-06-17.0")
+            ),
+            min_confidence=float(_pick(overrides, "min_confidence", "MIN_CONFIDENCE", 0.5)),
+            bbox=_as_bbox(_pick(overrides, "bbox", "SEARCH_BBOX", None)),
             probe_concurrency=int(_pick(overrides, "probe_concurrency", "PROBE_CONCURRENCY", 10)),
             probe_timeout=float(_pick(overrides, "probe_timeout", "PROBE_TIMEOUT", 5.0)),
             log_level=str(_pick(overrides, "log_level", "LOG_LEVEL", "INFO")),
@@ -94,14 +114,21 @@ class Settings:
         return settings
 
     def validate(self) -> None:
-        if not self.api_key or len(self.api_key) < 10:
-            raise ValueError("Invalid API key format")
+        if self.source not in SOURCE_CHOICES:
+            raise ValueError(f"Invalid source '{self.source}'. Choose one of: {SOURCE_CHOICES}")
+        if self.source in ("google", "both") and (not self.api_key or len(self.api_key) < 10):
+            raise ValueError(
+                f"GOOGLE_API_KEY is required for source '{self.source}'. "
+                "Use SOURCE=overture for the free, keyless path."
+            )
         if not self.cities:
             raise ValueError("No cities specified")
         if not 1 <= self.max_results <= 20:
             raise ValueError("max_results must be between 1 and 20 (Text Search caps at 20)")
         if self.monthly_call_budget <= 0:
             raise ValueError("monthly_call_budget must be positive")
+        if not 0 <= self.min_confidence <= 1:
+            raise ValueError("min_confidence must be between 0 and 1")
         if self.probe_concurrency < 1:
             raise ValueError("probe_concurrency must be at least 1")
         if self.probe_timeout <= 0:

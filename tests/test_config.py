@@ -29,3 +29,34 @@ def test_from_env_overrides_win(monkeypatch):
     assert settings.max_results == 10
     assert settings.field_profile == FieldProfile.PRO
     assert settings.cities == ["Austin TX", "Denver CO"]
+
+
+def test_overture_needs_no_api_key(monkeypatch):
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setenv("SEARCH_CITIES", "Covington LA")
+    settings = Settings.from_env()  # default source=overture
+    assert settings.source == "overture"
+    assert settings.api_key == ""
+
+
+def test_google_source_requires_api_key(monkeypatch):
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setenv("SEARCH_CITIES", "Covington LA")
+    with pytest.raises(ValueError, match="GOOGLE_API_KEY"):
+        Settings.from_env(source="google")
+    with pytest.raises(ValueError, match="GOOGLE_API_KEY"):
+        Settings.from_env(source="both")
+
+
+def test_bbox_parsing(monkeypatch):
+    monkeypatch.setenv("SEARCH_CITIES", "Covington LA")
+    settings = Settings.from_env(bbox="-90.17,30.43,-90.05,30.55")
+    assert settings.bbox == (-90.17, 30.43, -90.05, 30.55)
+    with pytest.raises(ValueError, match="bbox"):
+        Settings.from_env(bbox="1,2,3")
+
+
+def test_invalid_source_rejected(monkeypatch):
+    monkeypatch.setenv("SEARCH_CITIES", "Covington LA")
+    with pytest.raises(ValueError, match="source"):
+        Settings.from_env(source="bing")

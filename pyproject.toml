@@ -13,6 +13,7 @@ dependencies = [
     "httpx>=0.27",
     "python-dotenv>=1.0",
     "pandas>=2.1",
+    "duckdb>=1.5.4",
 ]
 
 [project.scripts]
@@ -41,6 +42,10 @@ src = ["src", "tests"]
 # E/W pycodestyle, F pyflakes, I import-sort, UP pyupgrade, B bugbear,
 # RUF incl. ambiguous-unicode checks that catch stray em-dashes / lookalikes.
 select = ["E", "W", "F", "I", "UP", "B", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# analytics.py holds long embedded CSS/JS template constants.
+"src/leadfinder/analytics.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
