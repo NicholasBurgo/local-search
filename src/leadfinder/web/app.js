@@ -39,13 +39,26 @@
     LAYER = L.layerGroup().addTo(MAP);
     window.addEventListener("resize", () => MAP.invalidateSize());
   }
+  function leadByKey(k) { return state.leads.find((l) => keyOf(l) === k); }
+  function markerStyle(l) {
+    const on = state.selected === keyOf(l), faded = isDone(l) || removed(l);
+    return { radius: on ? 10 : 7, color: on ? "#0E6B5C" : "#ffffff", weight: on ? 3 : 1.5, fillColor: removed(l) ? "#BBBBBB" : scoreColor(l.quality), fillOpacity: faded ? 0.4 : 0.92 };
+  }
   function popup(l) {
-    const b = ["<strong>" + esc(l.name) + "</strong>"];
-    b.push('<div class="muted">' + esc(l.category || "") + " &middot; score " + esc(l.quality) + (l.verification_status ? " &middot; " + esc(l.verification_status) : "") + "</div>");
-    if (hasText(l.phone)) b.push("<div>" + telLink(l.phone) + "</div>");
-    if (hasText(l.email)) b.push("<div>" + mailLink(l.email) + "</div>");
-    if (hasText(l.address)) b.push('<div class="muted">' + esc(l.address) + "</div>");
-    return b.join("");
+    const c = coordOf(l);
+    const dir = c ? "https://www.google.com/maps/dir/?api=1&destination=" + c[0] + "," + c[1] : null;
+    const meta = [l.category || "business", l.source, (l.confidence !== "" && l.confidence != null) ? "conf " + l.confidence : null, l.verification_status].filter(Boolean).map(esc).join(" &middot; ");
+    let h = '<div class="pop"><div class="pop-head"><span class="pop-name">' + esc(l.name) + '</span><span class="pill ' + pillCls(l.quality) + '">' + esc(l.quality) + "</span></div>";
+    h += '<div class="pop-meta">' + meta + "</div>";
+    if (hasText(l.address)) h += '<div class="pop-addr">' + esc(l.address) + "</div>";
+    const contacts = [];
+    if (hasText(l.phone)) contacts.push('<a class="pop-link" href="tel:' + esc(String(l.phone).replace(/[^0-9+]/g, "")) + '">Call ' + esc(l.phone) + "</a>");
+    if (hasText(l.email)) contacts.push('<a class="pop-link" href="mailto:' + esc(l.email) + '">' + esc(l.email) + "</a>");
+    if (contacts.length) h += '<div class="pop-contact">' + contacts.join("") + "</div>";
+    h += '<div class="pop-actions"><button type="button" class="pop-btn primary" data-act="toggle" data-k="' + esc(keyOf(l)) + '">' + (isDone(l) ? "Undo contacted" : "Mark contacted") + "</button>";
+    if (dir) h += '<a class="pop-btn" href="' + dir + '" target="_blank" rel="noopener">Directions</a>';
+    h += "</div></div>";
+    return h;
   }
   function renderMap(fit) {
     LAYER.clearLayers();
@@ -53,9 +66,11 @@
     const pts = [];
     visible().forEach((l) => {
       const c = coordOf(l); if (!c) return; pts.push(c);
-      const k = keyOf(l), sel = state.selected === k, faded = isDone(l) || removed(l);
-      const m = L.circleMarker(c, { radius: sel ? 9 : 7, color: sel ? "#0E6B5C" : "#ffffff", weight: sel ? 2.5 : 1.5, fillColor: removed(l) ? "#BBBBBB" : scoreColor(l.quality), fillOpacity: faded ? 0.4 : 0.92 });
-      m.bindPopup(popup(l)); m.on("click", () => selectLead(k, true)); m.addTo(LAYER); markers[k] = m;
+      const k = keyOf(l);
+      const m = L.circleMarker(c, markerStyle(l));
+      m.bindPopup(popup(l), { maxWidth: 280, minWidth: 210, autoPanPadding: [40, 60] });
+      m.on("click", () => selectLead(k, true));
+      m.addTo(LAYER); markers[k] = m;
     });
     if (RING) { MAP.removeLayer(RING); RING = null; }
     if (state.center) RING = L.circle(state.center, { radius: state.radius * 1609.34, color: "#0E6B5C", weight: 1, fill: false, dashArray: "5,5" }).addTo(MAP);
@@ -88,10 +103,19 @@
   function selectLead(k, fromMap) {
     state.selected = k;
     renderCards();
-    for (const kk in markers) { const m = markers[kk], on = kk === k; m.setStyle({ radius: on ? 9 : 7, color: on ? "#0E6B5C" : "#ffffff", weight: on ? 2.5 : 1.5 }); }
+    for (const kk in markers) { const l = leadByKey(kk); if (l) markers[kk].setStyle(markerStyle(l)); }
     const m = markers[k];
     if (m) { if (!fromMap) MAP.panTo(m.getLatLng()); m.openPopup(); }
     if (fromMap) { const el = [...$("cards").children].find((e) => e.dataset && e.dataset.k === k); if (el) el.scrollIntoView({ block: "nearest" }); }
+  }
+
+  // Toggle "contacted" from a map popup button (keeps the popup open + in sync).
+  function toggleContacted(k) {
+    if (state.checked[k]) delete state.checked[k]; else state.checked[k] = true;
+    save("lf.checked", state.checked);
+    const l = leadByKey(k), m = markers[k];
+    if (l && m) { m.setStyle(markerStyle(l)); m.setPopupContent(popup(l)); }
+    renderCards();
   }
 
   // ---------- overlay / banner ----------
@@ -173,6 +197,12 @@
       loc.value = s.label; hideSuggest(); doSearch({ lat: s.lat, lon: s.lon });
     });
     document.addEventListener("click", (e) => { if (!e.target.closest(".search")) hideSuggest(); });
+
+    // Popup action buttons (delegated: popups are added to the document dynamically).
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-act]"); if (!btn) return;
+      if (btn.getAttribute("data-act") === "toggle") toggleContacted(btn.getAttribute("data-k"));
+    });
 
     const radius = $("radius");
     radius.addEventListener("input", () => { state.radius = Number(radius.value); $("rlabel").textContent = state.radius + " mi"; if (RING) RING.setRadius(state.radius * 1609.34); });
