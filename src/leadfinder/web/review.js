@@ -13,25 +13,27 @@
     return api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   }
 
-  // Visible pipeline columns (left to right) and the hidden archive stages.
+  // Active pipeline columns (left to right); Won/Lost are the closed states.
   const COLUMNS = [
-    { stage: "new", title: "Newly Added" },
-    { stage: "possible", title: "Possible" },
-    { stage: "accepted", title: "Accepted" },
-    { stage: "declined", title: "Declined" },
+    { stage: "new", title: "New" },
+    { stage: "contacted", title: "Contacted" },
+    { stage: "qualified", title: "Qualified" },
+    { stage: "proposal_sent", title: "Proposal Sent" },
+    { stage: "negotiating", title: "Negotiating" },
   ];
   const ARCHIVE = [
-    { stage: "completed", title: "Completed" },
-    { stage: "not_possible", title: "Not possible" },
+    { stage: "won", title: "Won" },
+    { stage: "lost", title: "Lost" },
   ];
   // Quick-move buttons offered on a card, by its current stage: [targetStage, label, tone].
   const MOVES = {
-    new: [["possible", "Possible"], ["accepted", "Accept", "good"], ["declined", "Decline", "bad"]],
-    possible: [["accepted", "Accept", "good"], ["completed", "Complete", "good"], ["declined", "Decline", "bad"]],
-    accepted: [["completed", "Complete", "good"], ["possible", "Possible"], ["not_possible", "Drop", "bad"]],
-    declined: [["possible", "Reconsider"], ["not_possible", "Drop", "bad"]],
-    completed: [["accepted", "Reopen"]],
-    not_possible: [["possible", "Reopen"]],
+    new: [["contacted", "Contacted", "good"], ["lost", "Lost", "bad"]],
+    contacted: [["qualified", "Qualified", "good"], ["lost", "Lost", "bad"]],
+    qualified: [["proposal_sent", "Proposal", "good"], ["lost", "Lost", "bad"]],
+    proposal_sent: [["negotiating", "Negotiate", "good"], ["won", "Won", "good"], ["lost", "Lost", "bad"]],
+    negotiating: [["won", "Won", "good"], ["lost", "Lost", "bad"], ["proposal_sent", "Back"]],
+    won: [["negotiating", "Reopen"]],
+    lost: [["negotiating", "Reopen"]],
   };
 
   let leads = [], showArchive = false, dragK = null;
@@ -85,7 +87,7 @@
     const n = leads.length;
     $("sub-count").textContent = n + (n === 1 ? " lead" : " leads") + " on your list";
     if (!n) {
-      $("board").innerHTML = '<div class="rev-empty"><h2>Your list is empty</h2><p>Head to the <a href="/">map</a>, find businesses, and hit <b>+ Add to list</b>. They land in Newly Added here.</p></div>';
+      $("board").innerHTML = '<div class="rev-empty"><h2>Your list is empty</h2><p>Head to the <a href="/">map</a>, find businesses, and hit <b>+ Add to list</b>. They land in New here.</p></div>';
       $("archive").hidden = true; $("archive").innerHTML = "";
       $("archive-btn").hidden = true;
       return;
@@ -99,8 +101,8 @@
     } else {
       arch.hidden = true; arch.innerHTML = "";
     }
-    const na = byStage("completed").length + byStage("not_possible").length;
-    $("archive-btn").textContent = (showArchive ? "Hide archive" : "Show archive") + (na ? " (" + na + ")" : "");
+    const na = byStage("won").length + byStage("lost").length;
+    $("archive-btn").textContent = (showArchive ? "Hide closed" : "Show closed") + (na ? " (" + na + ")" : "");
   }
 
   async function move(k, to) {

@@ -46,9 +46,18 @@ _INSERT_COLS = [
     "stage",
 ]
 
-# Pipeline stages a lead moves through on the review board. None = not on the
-# list. "new" is where a lead lands when added from the map.
-STAGES = ("new", "possible", "accepted", "declined", "completed", "not_possible")
+# Sales-pipeline stages a lead moves through. None = not on the list; "new" is
+# where a lead lands when added from the map; "won"/"lost" are the closed states.
+STAGES = ("new", "contacted", "qualified", "proposal_sent", "negotiating", "won", "lost")
+
+# Remap the earlier triage stages onto the pipeline so existing rows stay valid.
+_STAGE_MIGRATION = {
+    "possible": "new",
+    "accepted": "qualified",
+    "declined": "lost",
+    "completed": "won",
+    "not_possible": "lost",
+}
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS leads (
@@ -76,15 +85,9 @@ _UPSERT_SQL = (
     + ", last_updated=now()"
 )
 
-_FILTERS = {
-    "listed": "stage IS NOT NULL",  # everything on the review board
-    "new": "stage = 'new'",
-    "possible": "stage = 'possible'",
-    "accepted": "stage = 'accepted'",
-    "declined": "stage = 'declined'",
-    "completed": "stage = 'completed'",
-    "not_possible": "stage = 'not_possible'",
-}
+# "listed" = everything on the board; one exact-match filter per pipeline stage.
+_FILTERS = {"listed": "stage IS NOT NULL"}
+_FILTERS.update({stage: f"stage = '{stage}'" for stage in STAGES})
 
 _UNSET = object()
 
@@ -143,6 +146,9 @@ class LeadStore:
         self._con.execute(_SCHEMA)
         # Additive migration so a DB created before the pipeline model upgrades.
         self._con.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS stage VARCHAR")
+        # Remap any legacy triage stages onto the current pipeline (idempotent).
+        for old, new in _STAGE_MIGRATION.items():
+            self._con.execute("UPDATE leads SET stage = ? WHERE stage = ?", [new, old])
 
     def close(self) -> None:
         with self._lock:

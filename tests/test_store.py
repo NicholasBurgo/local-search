@@ -31,29 +31,29 @@ def test_upsert_and_saved(tmp_path):
 def test_upsert_preserves_stage(tmp_path):
     s = LeadStore(str(tmp_path / "db.duckdb"))
     s.upsert([_rec("A", name="Joe")])
-    s.mark("A", stage="accepted")
+    s.mark("A", stage="qualified")
     # a fresh search refreshes source data but must NOT wipe the pipeline stage
     s.upsert([_rec("A", name="Joe's Diner", phone="999")])
     row = s.get(["A"])["A"]
     assert row["name"] == "Joe's Diner" and row["phone"] == "999"
-    assert row["stage"] == "accepted"
+    assert row["stage"] == "qualified"
 
 
 def test_stage_filters_and_stats(tmp_path):
     s = LeadStore(str(tmp_path / "db.duckdb"))
     s.upsert([_rec("A"), _rec("B"), _rec("C"), _rec("D")])
     s.mark("A", stage="new")
-    s.mark("B", stage="possible")
-    s.mark("C", stage="accepted")
+    s.mark("B", stage="contacted")
+    s.mark("C", stage="qualified")
     # D stays off the list (stage None)
     assert {r["place_id"] for r in s.saved("new")} == {"A"}
-    assert {r["place_id"] for r in s.saved("possible")} == {"B"}
-    assert {r["place_id"] for r in s.saved("accepted")} == {"C"}
+    assert {r["place_id"] for r in s.saved("contacted")} == {"B"}
+    assert {r["place_id"] for r in s.saved("qualified")} == {"C"}
     assert {r["place_id"] for r in s.saved("listed")} == {"A", "B", "C"}
     st = s.stats()
     assert st["total"] == 4 and st["listed"] == 3
-    assert st["new"] == 1 and st["possible"] == 1 and st["accepted"] == 1
-    assert st["declined"] == 0 and st["completed"] == 0 and st["not_possible"] == 0
+    assert st["new"] == 1 and st["contacted"] == 1 and st["qualified"] == 1
+    assert st["proposal_sent"] == 0 and st["won"] == 0 and st["lost"] == 0
 
 
 def test_mark_can_clear_stage(tmp_path):
@@ -92,8 +92,20 @@ def test_persistence_across_reopen(tmp_path):
     path = str(tmp_path / "db.duckdb")
     s = LeadStore(path)
     s.upsert([_rec("A")])
-    s.mark("A", stage="accepted")
+    s.mark("A", stage="qualified")
     s.close()
     s2 = LeadStore(path)  # reopen the same file
     assert s2.stats()["listed"] == 1
-    assert s2.saved("accepted")[0]["place_id"] == "A"
+    assert s2.saved("qualified")[0]["place_id"] == "A"
+
+
+def test_legacy_stage_migrates_on_reopen(tmp_path):
+    path = str(tmp_path / "db.duckdb")
+    s = LeadStore(path)
+    s.upsert([_rec("A"), _rec("B")])
+    s.mark("A", stage="accepted")  # old triage stage
+    s.mark("B", stage="completed")
+    s.close()
+    s2 = LeadStore(path)  # reopen remaps legacy stages onto the pipeline
+    assert s2.get(["A"])["A"]["stage"] == "qualified"
+    assert s2.get(["B"])["B"]["stage"] == "won"
