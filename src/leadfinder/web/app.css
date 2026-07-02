@@ -48,9 +48,11 @@ body {
 .radius-ctl input[type=range] { accent-color:var(--accent); width:120px; }
 select.ctl { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:9px; padding:8px 10px; }
 .btn {
+  display:inline-block; line-height:1; text-decoration:none;
   background:var(--accent); color:var(--accent-ink); border:0; border-radius:9px; padding:9px 15px;
   font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap;
 }
+.btn.ghost:hover { text-decoration:none; }
 .btn:hover { filter:brightness(1.06); }
 .btn.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); font-weight:500; }
 .btn.ghost:hover { color:var(--ink); border-color:var(--muted); filter:none; }

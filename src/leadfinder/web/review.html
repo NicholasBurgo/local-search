@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Leadfinder - Review</title>
+  <link rel="stylesheet" href="/app.css">
+  <style>
+    body { overflow:auto; height:auto; }
+    .rev-progress { padding:12px 20px; border-bottom:1px solid var(--line); display:flex;
+                    align-items:center; gap:20px; background:var(--card); }
+    .rev-counts { display:flex; gap:18px; font-size:13px; color:var(--muted); }
+    .rev-counts strong { color:var(--ink); font-size:15px; font-variant-numeric:tabular-nums; }
+    .progress { flex:1; min-width:120px; height:8px; background:var(--line); border-radius:99px; overflow:hidden; }
+    .progress-fill { display:block; height:100%; background:var(--accent); width:0; }
+    .rev-main { max-width:640px; margin:0 auto; padding:30px 20px 60px; display:flex;
+                flex-direction:column; gap:20px; }
+    .rev-card { background:var(--card); border:1px solid var(--line); border-radius:14px;
+                padding:24px 26px; box-shadow:var(--shadow); min-height:240px; }
+    .rev-name { font-size:22px; font-weight:700; margin-bottom:5px; display:flex; align-items:center;
+                gap:12px; flex-wrap:wrap; }
+    .rev-meta { color:var(--muted); font-size:13px; text-transform:capitalize; margin-bottom:16px; }
+    .rev-row { margin:9px 0; font-size:15px; }
+    .rev-label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.6px;
+                 display:block; margin-bottom:1px; }
+    .rev-actions { display:flex; gap:12px; justify-content:center; }
+    .rev-btn { flex:1; max-width:210px; padding:16px; border-radius:12px; font-size:15px; font-weight:700;
+               cursor:pointer; border:1px solid var(--line); background:var(--card); color:var(--ink); }
+    .rev-btn:hover { filter:brightness(.97); }
+    .rev-btn.keep { background:var(--good-soft); color:var(--good); border-color:transparent; }
+    .rev-btn.reject { background:var(--mid-soft); color:var(--mid); border-color:transparent; }
+    .rev-btn kbd { font-family:inherit; font-weight:500; font-size:11px; opacity:.65; margin-left:7px;
+                   border:1px solid currentColor; border-radius:4px; padding:1px 5px; }
+    .rev-hint { text-align:center; }
+    .rev-done { text-align:center; padding:36px 10px; color:var(--muted); }
+    .rev-done h2 { color:var(--ink); font-family:Charter,Georgia,serif; }
+    .nav-row { display:flex; justify-content:space-between; align-items:center; }
+    .link-btn { background:none; border:none; color:var(--muted); font-size:13px; cursor:pointer;
+                text-decoration:underline; padding:4px; }
+    .link-btn:hover { color:var(--ink); }
+  </style>
+</head>
+<body>
+  <header class="toolbar">
+    <div class="brand">Leadfinder</div>
+    <span class="muted">Review</span>
+    <div style="flex:1"></div>
+    <select id="filter" class="ctl" aria-label="Filter">
+      <option value="undecided">Undecided</option>
+      <option value="all">All</option>
+      <option value="keep">Kept</option>
+      <option value="reject">Rejected</option>
+    </select>
+    <a class="btn ghost" href="/">Map</a>
+    <button id="theme-btn" class="btn ghost icon" type="button" title="Toggle light/dark">&#9681;</button>
+  </header>
+
+  <div class="rev-progress">
+    <div class="rev-counts">
+      <span><strong id="c-keep">0</strong> kept</span>
+      <span><strong id="c-reject">0</strong> rejected</span>
+      <span><strong id="c-left">0</strong> to review</span>
+    </div>
+    <div class="progress"><span id="progress-fill" class="progress-fill"></span></div>
+  </div>
+
+  <main class="rev-main">
+    <div class="nav-row">
+      <button id="prev-btn" class="link-btn" type="button">&#8592; Previous</button>
+      <span id="pos" class="muted"></span>
+    </div>
+    <div id="rev-card" class="rev-card"></div>
+    <div class="rev-actions">
+      <button id="reject-btn" class="rev-btn reject" type="button">&#10007; Reject <kbd>X</kbd></button>
+      <button id="skip-btn" class="rev-btn" type="button">Skip <kbd>S</kbd></button>
+      <button id="keep-btn" class="rev-btn keep" type="button">Keep &#10003; <kbd>K</kbd></button>
+    </div>
+    <div class="rev-hint muted">K / right arrow = keep &middot; X / left arrow = reject &middot; S / space = skip</div>
+  </main>
+
+  <script src="/review.js"></script>
+</body>
+</html>

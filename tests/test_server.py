@@ -3,11 +3,16 @@ from leadfinder.models import Lead
 from leadfinder.server import (
     config_endpoint,
     geocode_endpoint,
+    mark_endpoint,
     read_static,
+    reverify_endpoint,
+    saved_endpoint,
     search_endpoint,
+    stats_endpoint,
     suggest_endpoint,
     verify_endpoint,
 )
+from leadfinder.store import LeadStore
 
 BBOX = (-90.17, 30.43, -90.05, 30.55)
 
@@ -114,7 +119,70 @@ def test_read_static_serves_frontend():
     assert read_static("/app.js") is not None
     assert read_static("/app.css") is not None
     assert read_static("/leaflet.js") is not None
+    assert read_static("/review") is not None  # review page
+    assert read_static("/review.js") is not None
     assert read_static("/nope") is None  # not whitelisted
+
+
+def test_search_persists_and_merges_marks(tmp_path):
+    store = LeadStore(str(tmp_path / "db.duckdb"))
+    store.upsert([{"place_id": "P1", "name": "Joe", "source": "overture"}])
+    store.mark("P1", decision="keep", contacted=True)
+
+    def fake_fetch(bbox, release, min_confidence, allowed_categories):
+        return [
+            Lead(
+                name="Joe",
+                city="Covington LA",
+                place_id="P1",
+                latitude=30.4,
+                longitude=-90.1,
+                phone="555",
+                source="overture",
+                confidence=0.9,
+            )
+        ]
+
+    out = search_endpoint(
+        {"lat": 30.4, "lon": -90.1, "radius_miles": 10},
+        _settings(),
+        store,
+        fetch=fake_fetch,
+        geocoder=None,
+    )
+    lead = out["leads"][0]
+    assert lead["place_id"] == "P1"
+    assert lead["decision"] == "keep" and lead["contacted"] is True  # merged from store
+    assert store.stats()["total"] == 1
+
+
+def test_saved_mark_stats_endpoints(tmp_path):
+    store = LeadStore(str(tmp_path / "db.duckdb"))
+    store.upsert(
+        [
+            {"place_id": "P1", "name": "Joe", "source": "overture", "quality": 80},
+            {"place_id": "P2", "name": "Bob", "source": "overture", "quality": 60},
+        ]
+    )
+    assert saved_endpoint({}, store)["count"] == 2
+    assert mark_endpoint({"place_id": "P1", "decision": "keep"}, store)["ok"] is True
+    assert saved_endpoint({"filter": "keep"}, store)["count"] == 1
+    assert stats_endpoint(store)["keep"] == 1
+    assert "error" in mark_endpoint({}, store)  # missing place_id
+
+
+def test_reverify_endpoint(tmp_path):
+    store = LeadStore(str(tmp_path / "db.duckdb"))
+    store.upsert([{"place_id": "P1", "name": "Joe", "source": "overture"}])
+
+    def fake_verify(rows):
+        return [
+            {**rows[0], "verification_status": "REMOVED_HAS_WEBSITE", "verified_date": "2026-07-02"}
+        ]
+
+    out = reverify_endpoint({}, _settings(), store, verifier=fake_verify)
+    assert out["count"] == 1
+    assert store.get(["P1"])["P1"]["verification_status"] == "REMOVED_HAS_WEBSITE"
 
 
 def test_verify_endpoint():

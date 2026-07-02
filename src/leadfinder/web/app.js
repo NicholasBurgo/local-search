@@ -18,7 +18,7 @@
   function hasText(v) { return String(v == null ? "" : v).trim() !== ""; }
   function scoreColor(q) { const n = Number(q) || 0; return n >= 70 ? "#2F7D4F" : n >= 40 ? "#A97A0B" : "#8A9187"; }
   function keyOf(l) { return String(l.place_id || "") || ((l.name || "") + "|" + (l.city || "")).toLowerCase(); }
-  function isDone(l) { return !!state.checked[keyOf(l)]; }
+  function isDone(l) { return l.contacted === true || !!state.checked[keyOf(l)]; }
   function removed(l) { const s = l.verification_status; return s === "REMOVED_HAS_WEBSITE" || s === "REMOVED_CHAIN"; }
   function coordOf(l) { const a = Number(l.latitude), b = Number(l.longitude); return isFinite(a) && isFinite(b) && (a || b) ? [a, b] : null; }
   function telLink(v) { return hasText(v) ? '<a href="tel:' + esc(String(v).replace(/[^0-9+]/g, "")) + '">' + esc(v) + "</a>" : ""; }
@@ -117,13 +117,18 @@
   }
 
   // Toggle "contacted" from a map popup button (keeps the popup open + in sync).
-  function toggleContacted(k) {
-    if (state.checked[k]) delete state.checked[k]; else state.checked[k] = true;
+  // Single source for "contacted": updates state + localStorage + the DB, re-renders.
+  function setContacted(k, on) {
+    if (on) state.checked[k] = true; else delete state.checked[k];
     save("lf.checked", state.checked);
-    const l = leadByKey(k), m = markers[k];
+    const l = leadByKey(k);
+    if (l) l.contacted = on;
+    const m = markers[k];
     if (l && m) { m.setStyle(markerStyle(l)); m.setPopupContent(popup(l)); }
     renderCards();
+    post("/api/mark", { place_id: k, contacted: on }).catch(() => {});  // persist (best-effort)
   }
+  function toggleContacted(k) { setContacted(k, !isDone(leadByKey(k) || {})); }
 
   // ---------- overlay / banner ----------
   function overlay(on, text) { $("overlay").hidden = !on; if (text) $("overlay-text").textContent = text; }
@@ -159,6 +164,32 @@
     banner("Verified: " + kept + " confirmed no-website, " + (state.leads.length - kept) + " removed (had a live site).", "ok");
   }
 
+  async function doReverify() {
+    overlay(true, "Reverifying every stored lead (probing domains)...");
+    let res;
+    try { res = await post("/api/reverify", {}); } catch (e) { res = { error: String(e) }; }
+    overlay(false);
+    if (res.error) { banner(res.error, "error"); return; }
+    const byId = {}; (res.leads || []).forEach((l) => { if (l.place_id) byId[l.place_id] = l; });
+    state.leads.forEach((l) => { const u = byId[l.place_id]; if (u) l.verification_status = u.verification_status; });
+    renderAll(false);
+    banner("Reverified " + (res.count || 0) + " stored leads.", "ok");
+  }
+
+  async function doSaved() {
+    overlay(true, "Loading saved leads...");
+    let res;
+    try { res = await api("/api/saved"); } catch (e) { res = { error: String(e) }; }
+    overlay(false);
+    if (res.error) { banner(res.error, "error"); return; }
+    state.leads = res.leads || []; state.selected = null;
+    const pts = state.leads.map(coordOf).filter(Boolean);
+    if (pts.length) { let la = 0, lo = 0; pts.forEach((p) => { la += p[0]; lo += p[1]; }); state.center = [la / pts.length, lo / pts.length]; }
+    renderAll(true);
+    const st = res.stats || {};
+    banner((res.count || 0) + " saved leads (" + (st.keep || 0) + " kept, " + (st.reject || 0) + " rejected, " + (st.contacted || 0) + " contacted).", "ok");
+  }
+
   function csvCell(v) { v = v == null ? "" : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
   function exportCSV() {
     if (!state.leads.length) { banner("Nothing to export yet.", "error"); return; }
@@ -188,6 +219,8 @@
   function wire() {
     $("search-btn").addEventListener("click", () => { hideSuggest(); doSearch(); });
     $("verify-btn").addEventListener("click", doVerify);
+    $("reverify-btn").addEventListener("click", doReverify);
+    $("saved-btn").addEventListener("click", doSaved);
     $("export-btn").addEventListener("click", exportCSV);
 
     const loc = $("loc");
@@ -220,7 +253,7 @@
 
     $("cards").addEventListener("click", (e) => {
       const chk = e.target.closest(".chk");
-      if (chk) { const k = chk.dataset.k; if (chk.checked) state.checked[k] = true; else delete state.checked[k]; save("lf.checked", state.checked); renderAll(false); return; }
+      if (chk) { setContacted(chk.dataset.k, chk.checked); return; }
       if (e.target.closest("a")) return;
       const card = e.target.closest(".card"); if (card) selectLead(card.dataset.k, false);
     });
