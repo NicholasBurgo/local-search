@@ -15,7 +15,7 @@
     .board-wrap { padding:14px 18px 50px; }
     .board { display:flex; gap:14px; align-items:flex-start; overflow-x:auto; }
     .col { flex:1 1 0; min-width:250px; background:rgba(127,127,127,.06); border:1px solid var(--line);
-           border-radius:14px; display:flex; flex-direction:column; max-height:calc(100vh - 150px); }
+           border-radius:14px; display:flex; flex-direction:column; max-height:calc(100vh - 210px); }
     .col.drop { outline:2px dashed var(--accent); outline-offset:-2px; }
     .col-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px 10px; }
     .col-title { font-weight:700; font-size:14px; }
@@ -50,15 +50,30 @@
   </style>
 </head>
 <body>
-  <header class="toolbar">
-    <div class="brand">Leadfinder</div>
-    <span class="muted">Pipeline</span>
+  <header class="appbar">
+    <a class="brand-block" href="/">
+      <svg class="logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 2C7.9 2 4.6 5.3 4.6 9.4c0 5.3 6.4 11.6 6.7 11.9.4.4 1 .4 1.4 0 .3-.3 6.7-6.6 6.7-11.9C19.4 5.3 16.1 2 12 2z" fill="currentColor"/>
+        <circle class="dot" cx="12" cy="9.4" r="2.6"/>
+      </svg>
+      <span class="brand">Leadfinder</span>
+    </a>
+    <nav class="appnav">
+      <a class="navlink" href="/">Map</a>
+      <a class="navlink active" href="/review">Pipeline</a>
+    </nav>
+    <div style="flex:1"></div>
+    <div class="appbar-right">
+      <button id="theme-btn" class="iconbtn" type="button" title="Toggle light/dark">&#9681;</button>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <span class="page-title">Pipeline</span>
     <div style="flex:1"></div>
     <button id="archive-btn" class="btn ghost" type="button">Show archive</button>
     <button id="refresh-btn" class="btn ghost" type="button" title="Reload from server">Refresh</button>
-    <a class="btn ghost" href="/">Map</a>
-    <button id="theme-btn" class="btn ghost icon" type="button" title="Toggle light/dark">&#9681;</button>
-  </header>
+  </div>
 
   <div class="board-sub">
     <span id="sub-count" class="count"></span>

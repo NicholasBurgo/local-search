@@ -156,7 +156,7 @@
     if (res.error) { banner(res.error, "error"); return; }
     state.center = res.center; state.leads = res.leads || []; state.selected = null;
     renderAll(true);
-    banner(res.count + " businesses with no website on file within " + state.radius + " mi. Add the good ones to your list, then open Review.", "ok");
+    banner(res.count + " businesses with no website on file within " + state.radius + " mi. Add the good ones to your list, then open Pipeline.", "ok");
   }
 
   async function doVerify() {
