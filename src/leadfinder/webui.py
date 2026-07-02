@@ -160,6 +160,11 @@ function init(){
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:"&copy; OpenStreetMap contributors"}).addTo(MAP);
   LAYER = L.layerGroup().addTo(MAP);
   MAP.setView([CFG.defaultLat, CFG.defaultLon], 10);
+  // Recompute size once the container is measured (avoids a blank map).
+  function sizeMap(){ if(MAP){ MAP.invalidateSize(); render(); } }
+  window.addEventListener("resize", ()=>{ if(MAP) MAP.invalidateSize(); });
+  if(typeof ResizeObserver!=="undefined"){ try { new ResizeObserver(()=>{ if(MAP) MAP.invalidateSize(); }).observe($("app-map")); } catch(e){} }
+  setTimeout(sizeMap, 300);
 
   $("loc").value = CFG.defaultLocation;
   $("radius").value = CFG.defaultRadius;

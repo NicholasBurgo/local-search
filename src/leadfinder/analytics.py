@@ -460,6 +460,13 @@ function initMap(){
   sel.addEventListener("change", ()=>setCenter(sel.value));
   $("f-radius").addEventListener("input", e=>{ mapState.radius=Number(e.target.value); $("radius-label").textContent=mapState.radius+" mi"; render(); });
   setCenter("__all", true);
+  // A map inside an iframe / late-sized container computes its size before layout
+  // settles, so pins land off the visible viewport (blank map). Recompute size and
+  // re-fit once the container is really measured.
+  function refit(){ if(!mapState.map) return; mapState.map.invalidateSize(); setCenter($("f-center").value||"__all", false); }
+  if(typeof window!=="undefined"){ window.addEventListener("load", refit); window.addEventListener("resize", refit); }
+  if(typeof ResizeObserver!=="undefined"){ try { new ResizeObserver(refit).observe($("map")); } catch(e){} }
+  if(typeof setTimeout!=="undefined"){ setTimeout(refit, 300); }
 }
 
 function filtered(){
