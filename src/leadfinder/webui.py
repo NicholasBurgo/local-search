@@ -156,7 +156,7 @@ function init(){
   document.documentElement.setAttribute("data-theme", theme);
   $("theme-toggle").addEventListener("click", ()=>{ theme = theme==="dark"?"light":"dark"; try{ localStorage.setItem("leadfinder.theme.v1", theme);}catch(e){} document.documentElement.setAttribute("data-theme", theme); });
 
-  MAP = L.map("app-map");
+  MAP = L.map("app-map", {preferCanvas:true});
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:"&copy; OpenStreetMap contributors"}).addTo(MAP);
   LAYER = L.layerGroup().addTo(MAP);
   MAP.setView([CFG.defaultLat, CFG.defaultLon], 10);

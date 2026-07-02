@@ -444,7 +444,10 @@ function updateMap(rows){
 function initMap(){
   if(typeof L==="undefined" || !COORD_LEADS.length){ const card=$("map-card"); if(card) card.style.display="none"; return; }
   mapState.on = true;
-  const map = L.map("map", {scrollWheelZoom:true});
+  // preferCanvas + an initial view make the pins paint even when the tile layer
+  // never loads (e.g. tiles blocked by CSP in a shared/hosted view).
+  const c0 = centroid(COORD_LEADS.map(x=>x[1])) || [30.47, -90.1];
+  const map = L.map("map", {scrollWheelZoom:true, preferCanvas:true}).setView(c0, 12);
   mapState.map = map;
   const tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:"&copy; OpenStreetMap contributors"});
   let errs=0;
