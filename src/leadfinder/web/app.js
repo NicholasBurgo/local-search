@@ -31,13 +31,20 @@
   function post(path, body) { return api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
 
   // ---------- map ----------
-  let MAP, LAYER, RING = null;
+  let MAP, LAYER, RING = null, TILES = null;
   const markers = {};
   function initMap() {
     MAP = L.map("map", { preferCanvas: true }).setView([30.47, -90.1], 10);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(MAP);
     LAYER = L.layerGroup().addTo(MAP);
     window.addEventListener("resize", () => MAP.invalidateSize());
+  }
+  // Basemap follows the theme: detailed OSM for light, CARTO Dark Matter for dark.
+  function setTiles(theme) {
+    if (TILES) MAP.removeLayer(TILES);
+    TILES = theme === "dark"
+      ? L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png", { maxZoom: 20, subdomains: "abcd", attribution: "&copy; OpenStreetMap contributors &copy; CARTO" })
+      : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" });
+    TILES.addTo(MAP);
   }
   function leadByKey(k) { return state.leads.find((l) => keyOf(l) === k); }
   function markerStyle(l) {
@@ -219,10 +226,12 @@
     });
 
     const themeBtn = $("theme-btn");
-    let theme = load("lf.theme", null);
+    const urlTheme = new URLSearchParams(location.search).get("theme");
+    let theme = urlTheme === "dark" || urlTheme === "light" ? urlTheme : load("lf.theme", null);
     if (!theme) { try { theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; } catch (e) { theme = "light"; } }
-    document.documentElement.setAttribute("data-theme", theme);
-    themeBtn.addEventListener("click", () => { theme = theme === "dark" ? "light" : "dark"; save("lf.theme", theme); document.documentElement.setAttribute("data-theme", theme); });
+    function applyTheme(t) { document.documentElement.setAttribute("data-theme", t); setTiles(t); }
+    applyTheme(theme);
+    themeBtn.addEventListener("click", () => { theme = theme === "dark" ? "light" : "dark"; save("lf.theme", theme); applyTheme(theme); });
   }
 
   async function boot() {
@@ -238,7 +247,10 @@
     } catch (e) { /* keep defaults */ }
     $("hide-done").checked = state.hideDone;
     setTimeout(() => MAP.invalidateSize(), 200);
-    doSearch();
+    await doSearch();
+    // Optional deep-link: ?focus=<index> opens that lead's detail card on load.
+    const focus = new URLSearchParams(location.search).get("focus");
+    if (focus !== null) { const l = visible()[Number(focus) || 0]; if (l) selectLead(keyOf(l), false); }
   }
 
   document.addEventListener("DOMContentLoaded", boot);
