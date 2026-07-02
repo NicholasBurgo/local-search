@@ -127,7 +127,7 @@ def test_read_static_serves_frontend():
 def test_search_persists_and_merges_marks(tmp_path):
     store = LeadStore(str(tmp_path / "db.duckdb"))
     store.upsert([{"place_id": "P1", "name": "Joe", "source": "overture"}])
-    store.mark("P1", decision="keep", contacted=True)
+    store.mark("P1", stage="accepted")
 
     def fake_fetch(bbox, release, min_confidence, allowed_categories):
         return [
@@ -152,8 +152,8 @@ def test_search_persists_and_merges_marks(tmp_path):
     )
     lead = out["leads"][0]
     assert lead["place_id"] == "P1"
-    assert lead["decision"] == "keep" and lead["contacted"] is True  # merged from store
-    assert store.stats()["total"] == 1
+    assert lead["stage"] == "accepted"  # merged from the store onto the fresh record
+    assert store.stats()["listed"] == 1
 
 
 def test_saved_mark_stats_endpoints(tmp_path):
@@ -165,9 +165,9 @@ def test_saved_mark_stats_endpoints(tmp_path):
         ]
     )
     assert saved_endpoint({}, store)["count"] == 2
-    assert mark_endpoint({"place_id": "P1", "decision": "keep"}, store)["ok"] is True
-    assert saved_endpoint({"filter": "keep"}, store)["count"] == 1
-    assert stats_endpoint(store)["keep"] == 1
+    assert mark_endpoint({"place_id": "P1", "stage": "possible"}, store)["ok"] is True
+    assert saved_endpoint({"filter": "possible"}, store)["count"] == 1
+    assert stats_endpoint(store)["possible"] == 1
     assert "error" in mark_endpoint({}, store)  # missing place_id
 
 

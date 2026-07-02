@@ -3,89 +3,71 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Leadfinder - Review</title>
+  <title>Leadfinder - Pipeline</title>
   <link rel="stylesheet" href="/app.css">
   <style>
     body { overflow:auto; height:auto; }
-    .rev-progress { padding:12px 20px; border-bottom:1px solid var(--line); display:flex;
-                    align-items:center; gap:20px; background:var(--card); }
-    .rev-counts { display:flex; gap:18px; font-size:13px; color:var(--muted); }
-    .rev-counts strong { color:var(--ink); font-size:15px; font-variant-numeric:tabular-nums; }
-    .progress { flex:1; min-width:120px; height:8px; background:var(--line); border-radius:99px; overflow:hidden; }
-    .progress-fill { display:block; height:100%; background:var(--accent); width:0; transition:width .2s; }
+    .board-sub { max-width:1500px; margin:0 auto; padding:14px 18px 0; display:flex;
+                 justify-content:space-between; gap:16px; align-items:baseline; flex-wrap:wrap; }
+    .board-sub .count { font-weight:700; }
+    .board-sub .hint { color:var(--muted); font-size:12.5px; }
 
-    .rev-sub { max-width:940px; margin:0 auto; padding:16px 16px 0; display:flex;
-               justify-content:space-between; align-items:baseline; gap:12px; }
-    .rev-sub .count { font-size:14px; color:var(--ink); font-weight:600; }
-    .rev-sub .hint { font-size:12.5px; color:var(--muted); }
+    .board-wrap { padding:14px 18px 50px; }
+    .board { display:flex; gap:14px; align-items:flex-start; overflow-x:auto; }
+    .col { flex:1 1 0; min-width:250px; background:rgba(127,127,127,.06); border:1px solid var(--line);
+           border-radius:14px; display:flex; flex-direction:column; max-height:calc(100vh - 150px); }
+    .col.drop { outline:2px dashed var(--accent); outline-offset:-2px; }
+    .col-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px 10px; }
+    .col-title { font-weight:700; font-size:14px; }
+    .col-count { background:var(--line); color:var(--ink); border-radius:99px; padding:1px 9px;
+                 font-size:12px; font-variant-numeric:tabular-nums; }
+    .col-body { padding:0 10px 10px; display:flex; flex-direction:column; gap:9px; overflow-y:auto; min-height:56px; }
+    .col-empty { color:var(--muted); font-size:12px; text-align:center; padding:16px 6px;
+                 border:1px dashed var(--line); border-radius:10px; }
 
-    .rev-list { max-width:940px; margin:0 auto; padding:12px 16px 70px;
-                display:flex; flex-direction:column; gap:8px; }
+    .pcard { background:var(--card); border:1px solid var(--line); border-radius:11px; padding:10px 12px;
+             box-shadow:var(--shadow); cursor:grab; }
+    .pcard:active { cursor:grabbing; }
+    .pcard.dragging { opacity:.45; }
+    .pcard-top { display:flex; align-items:center; gap:8px; }
+    .pcard-name { font-weight:700; font-size:14.5px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pcard-rm { border:none; background:none; color:var(--muted); font-size:17px; line-height:1; cursor:pointer; padding:0 2px; }
+    .pcard-rm:hover { color:var(--mid); }
+    .pcard-meta { color:var(--muted); font-size:12px; margin:4px 0 0; line-height:1.5; }
+    .pcard-meta a { color:var(--accent); text-decoration:none; }
+    .pcard-meta a:hover { text-decoration:underline; }
+    .pcard-acts { display:flex; gap:6px; flex-wrap:wrap; margin-top:9px; }
+    .mv { font-size:11.5px; padding:4px 9px; border-radius:7px; border:1px solid var(--line);
+          background:var(--card); color:var(--muted); cursor:pointer; }
+    .mv:hover { color:var(--ink); border-color:var(--muted); }
+    .mv.good:hover { color:var(--good); border-color:var(--good); }
+    .mv.bad:hover { color:var(--mid); border-color:var(--mid); }
 
-    .row { display:flex; align-items:center; gap:14px; background:var(--card);
-           border:1px solid var(--line); border-left:3px solid transparent; border-radius:12px;
-           padding:11px 14px; box-shadow:var(--shadow); transition:opacity .15s, border-color .15s; }
-    .row.keep { border-left-color:var(--good); }
-    .row.reject { border-left-color:var(--mid); opacity:.55; }
-    .row .info { flex:1; min-width:0; }
-    .row .name { font-size:16px; font-weight:700; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-    .row .meta { color:var(--muted); font-size:12.5px; margin-top:3px; line-height:1.5; }
-    .row .meta a { color:var(--accent); text-decoration:none; }
-    .row .meta a:hover { text-decoration:underline; }
-    .row .sep { opacity:.4; margin:0 7px; }
-    .chip { font-size:10.5px; text-transform:uppercase; letter-spacing:.5px; padding:2px 7px;
-            border-radius:99px; font-weight:700; }
-    .chip.keep { background:var(--good-soft); color:var(--good); }
-    .chip.reject { background:var(--mid-soft); color:var(--mid); }
-
-    .acts { display:flex; gap:8px; flex:none; }
-    .mk { min-width:44px; height:40px; padding:0 10px; border-radius:10px; border:1px solid var(--line);
-          background:var(--card); color:var(--muted); font-size:16px; font-weight:700; cursor:pointer;
-          display:flex; align-items:center; gap:6px; }
-    .mk .lbl { font-size:12px; font-weight:600; }
-    .mk:hover { color:var(--ink); border-color:var(--muted); }
-    .mk.keep.on { background:var(--good-soft); color:var(--good); border-color:transparent; }
-    .mk.reject.on { background:var(--mid-soft); color:var(--mid); border-color:transparent; }
-
-    .rev-empty { text-align:center; color:var(--muted); padding:60px 16px; }
+    .archive { max-width:1500px; margin:4px auto 0; padding:0 18px; }
+    .rev-empty { text-align:center; color:var(--muted); padding:70px 16px; }
     .rev-empty h2 { color:var(--ink); font-family:Charter,Georgia,serif; margin-bottom:6px; }
-    @media (max-width:560px) {
-      .row { flex-wrap:wrap; }
-      .mk .lbl { display:none; }
-    }
+    @media (max-width:760px) { .col { min-width:220px; } }
   </style>
 </head>
 <body>
   <header class="toolbar">
     <div class="brand">Leadfinder</div>
-    <span class="muted">Review</span>
+    <span class="muted">Pipeline</span>
     <div style="flex:1"></div>
-    <select id="filter" class="ctl" aria-label="Filter">
-      <option value="undecided">Undecided</option>
-      <option value="all">All</option>
-      <option value="keep">Kept</option>
-      <option value="reject">Rejected</option>
-    </select>
+    <button id="archive-btn" class="btn ghost" type="button">Show archive</button>
+    <button id="refresh-btn" class="btn ghost" type="button" title="Reload from server">Refresh</button>
     <a class="btn ghost" href="/">Map</a>
     <button id="theme-btn" class="btn ghost icon" type="button" title="Toggle light/dark">&#9681;</button>
   </header>
 
-  <div class="rev-progress">
-    <div class="rev-counts">
-      <span><strong id="c-keep">0</strong> kept</span>
-      <span><strong id="c-reject">0</strong> rejected</span>
-      <span><strong id="c-left">0</strong> to review</span>
-    </div>
-    <div class="progress"><span id="progress-fill" class="progress-fill"></span></div>
+  <div class="board-sub">
+    <span id="sub-count" class="count"></span>
+    <span class="hint">Drag a card between columns, or use its buttons. Add leads from the map and they land in Newly Added.</span>
   </div>
 
-  <div class="rev-sub">
-    <span id="count" class="count"></span>
-    <span class="hint">Click &#10003; to keep, &#10007; to reject &middot; click again to undo</span>
-  </div>
-
-  <main>
-    <div id="list" class="rev-list"></div>
+  <main id="board-wrap" class="board-wrap">
+    <div id="board" class="board"></div>
+    <section id="archive" class="archive" hidden></section>
   </main>
 
   <script src="/review.js"></script>

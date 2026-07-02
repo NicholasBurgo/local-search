@@ -41,7 +41,12 @@ _INSERT_COLS = [
     "verified_date",
     "decision",
     "contacted",
+    "stage",
 ]
+
+# Pipeline stages a lead moves through on the review board. None = not on the
+# list. "new" is where a lead lands when added from the map.
+STAGES = ("new", "possible", "accepted", "declined", "completed", "not_possible")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS leads (
@@ -53,7 +58,7 @@ CREATE TABLE IF NOT EXISTS leads (
   source VARCHAR, confidence DOUBLE, latitude DOUBLE, longitude DOUBLE,
   quality INTEGER,
   verification_status VARCHAR, verified_date VARCHAR,
-  decision VARCHAR, contacted BOOLEAN DEFAULT false,
+  decision VARCHAR, contacted BOOLEAN DEFAULT false, stage VARCHAR,
   first_seen TIMESTAMP, last_updated TIMESTAMP
 )
 """
@@ -70,10 +75,13 @@ _UPSERT_SQL = (
 )
 
 _FILTERS = {
-    "undecided": "decision IS NULL",
-    "keep": "decision = 'keep'",
-    "reject": "decision = 'reject'",
-    "contacted": "contacted = true",
+    "listed": "stage IS NOT NULL",  # everything on the review board
+    "new": "stage = 'new'",
+    "possible": "stage = 'possible'",
+    "accepted": "stage = 'accepted'",
+    "declined": "stage = 'declined'",
+    "completed": "stage = 'completed'",
+    "not_possible": "stage = 'not_possible'",
 }
 
 _UNSET = object()
@@ -118,6 +126,7 @@ def _row_params(rec: dict) -> list:
         g("verified_date") or None,
         g("decision") or None,
         bool(g("contacted") or False),
+        g("stage") or None,
     ]
 
 
@@ -130,6 +139,8 @@ class LeadStore:
         self._lock = threading.Lock()
         self._con = duckdb.connect(db_path)
         self._con.execute(_SCHEMA)
+        # Additive migration so a DB created before the pipeline model upgrades.
+        self._con.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS stage VARCHAR")
 
     def close(self) -> None:
         with self._lock:
@@ -171,7 +182,7 @@ class LeadStore:
             )
             return self._records(cur)
 
-    def mark(self, place_id: str, decision=_UNSET, contacted=_UNSET) -> None:
+    def mark(self, place_id: str, decision=_UNSET, contacted=_UNSET, stage=_UNSET) -> None:
         sets, params = [], []
         if decision is not _UNSET:
             sets.append("decision = ?")
@@ -179,6 +190,9 @@ class LeadStore:
         if contacted is not _UNSET:
             sets.append("contacted = ?")
             params.append(bool(contacted))
+        if stage is not _UNSET:
+            sets.append("stage = ?")
+            params.append(stage or None)
         if not sets:
             return
         sets.append("last_updated = now()")
@@ -204,19 +218,11 @@ class LeadStore:
     def stats(self) -> dict:
         with self._lock:
             total = self._con.execute("SELECT count(*) FROM leads").fetchone()[0]
-            keep = self._con.execute("SELECT count(*) FROM leads WHERE decision='keep'").fetchone()[
-                0
-            ]
-            reject = self._con.execute(
-                "SELECT count(*) FROM leads WHERE decision='reject'"
-            ).fetchone()[0]
-            contacted = self._con.execute(
-                "SELECT count(*) FROM leads WHERE contacted=true"
-            ).fetchone()[0]
-        return {
-            "total": total,
-            "keep": keep,
-            "reject": reject,
-            "undecided": total - keep - reject,
-            "contacted": contacted,
-        }
+            rows = self._con.execute(
+                "SELECT stage, count(*) FROM leads WHERE stage IS NOT NULL GROUP BY stage"
+            ).fetchall()
+        counts = {stage: n for stage, n in rows}
+        out = {"total": total, "listed": sum(counts.values())}
+        for stage in STAGES:
+            out[stage] = counts.get(stage, 0)
+        return out

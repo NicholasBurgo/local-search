@@ -97,14 +97,13 @@ def geocode_endpoint(params: dict, geocoder=city_bbox) -> dict:
 
 
 def _merge_stored(records: list[dict], store) -> None:
-    """Overlay persisted marks (decision/contacted/verification) onto fresh records."""
+    """Overlay persisted state (stage/verification) onto fresh search records."""
     stored = store.get([r.get("place_id") for r in records])
     for r in records:
         s = stored.get(r.get("place_id"))
         if not s:
             continue
-        r["decision"] = s.get("decision")
-        r["contacted"] = bool(s.get("contacted"))
+        r["stage"] = s.get("stage")  # so the map shows what is already on the list
         if s.get("verification_status"):
             r["verification_status"] = s["verification_status"]
         if s.get("verified_date"):
@@ -172,6 +171,8 @@ def mark_endpoint(payload: dict, store) -> dict:
     if not place_id:
         return {"error": "missing place_id"}
     kwargs = {}
+    if "stage" in payload:
+        kwargs["stage"] = payload["stage"]
     if "decision" in payload:
         kwargs["decision"] = payload["decision"]
     if "contacted" in payload:

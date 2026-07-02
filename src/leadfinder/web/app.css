@@ -93,15 +93,17 @@ select.ctl { background:var(--bg); color:var(--ink); border:1px solid var(--line
   background:var(--card); transition:border-color .1s, background .1s; }
 .card:hover { border-color:var(--muted); }
 .card.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
-.card.done { opacity:.6; }
-.card.done .card-name { text-decoration:line-through; text-decoration-color:var(--good); }
+.card.listed { border-left:3px solid var(--accent); }
 .card.removed .card-name { color:var(--muted); }
 .card-top { display:flex; align-items:center; gap:9px; }
 .card-name { font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.card .chk { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex:0 0 auto; }
-.card-meta { color:var(--muted); font-size:12px; margin:4px 0 0 25px; }
-.card-links { margin:6px 0 0 25px; font-size:13px; display:flex; gap:14px; flex-wrap:wrap; }
-.card-addr { color:var(--muted); font-size:12px; margin:5px 0 0 25px; }
+.card-meta { color:var(--muted); font-size:12px; margin:4px 0 0; }
+.card-links { margin:6px 0 0; font-size:13px; display:flex; gap:14px; flex-wrap:wrap; }
+.card-addr { color:var(--muted); font-size:12px; margin:5px 0 0; }
+.add-btn { margin-top:9px; width:100%; padding:7px; border-radius:8px; border:1px solid var(--line);
+  background:var(--card); color:var(--accent); font-weight:600; font-size:13px; cursor:pointer; }
+.add-btn:hover { border-color:var(--accent); }
+.add-btn.on { background:var(--accent-soft); color:var(--accent); border-color:transparent; }
 a { color:var(--accent); text-decoration:none; }
 a:hover { text-decoration:underline; }
 

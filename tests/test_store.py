@@ -24,32 +24,46 @@ def test_upsert_and_saved(tmp_path):
     saved = s.saved()
     assert len(saved) == 2
     assert {r["name"] for r in saved} == {"Joe", "Bob"}
-    assert all(r["contacted"] is False and r["decision"] is None for r in saved)
+    assert all(r["stage"] is None for r in saved)  # nothing on the list yet
     assert s.upsert([{"name": "no id"}]) == 0  # rows without place_id skipped
 
 
-def test_upsert_preserves_marks(tmp_path):
+def test_upsert_preserves_stage(tmp_path):
     s = LeadStore(str(tmp_path / "db.duckdb"))
     s.upsert([_rec("A", name="Joe")])
-    s.mark("A", decision="keep", contacted=True)
-    # a fresh search refreshes source data but must NOT wipe the triage marks
+    s.mark("A", stage="accepted")
+    # a fresh search refreshes source data but must NOT wipe the pipeline stage
     s.upsert([_rec("A", name="Joe's Diner", phone="999")])
     row = s.get(["A"])["A"]
     assert row["name"] == "Joe's Diner" and row["phone"] == "999"
-    assert row["decision"] == "keep" and row["contacted"] is True
+    assert row["stage"] == "accepted"
 
 
-def test_mark_filters_and_stats(tmp_path):
+def test_stage_filters_and_stats(tmp_path):
     s = LeadStore(str(tmp_path / "db.duckdb"))
-    s.upsert([_rec("A"), _rec("B"), _rec("C")])
-    s.mark("A", decision="keep")
-    s.mark("B", decision="reject")
-    s.mark("C", contacted=True)
-    assert {r["place_id"] for r in s.saved("keep")} == {"A"}
-    assert {r["place_id"] for r in s.saved("reject")} == {"B"}
-    assert {r["place_id"] for r in s.saved("undecided")} == {"C"}
-    assert {r["place_id"] for r in s.saved("contacted")} == {"C"}
-    assert s.stats() == {"total": 3, "keep": 1, "reject": 1, "undecided": 1, "contacted": 1}
+    s.upsert([_rec("A"), _rec("B"), _rec("C"), _rec("D")])
+    s.mark("A", stage="new")
+    s.mark("B", stage="possible")
+    s.mark("C", stage="accepted")
+    # D stays off the list (stage None)
+    assert {r["place_id"] for r in s.saved("new")} == {"A"}
+    assert {r["place_id"] for r in s.saved("possible")} == {"B"}
+    assert {r["place_id"] for r in s.saved("accepted")} == {"C"}
+    assert {r["place_id"] for r in s.saved("listed")} == {"A", "B", "C"}
+    st = s.stats()
+    assert st["total"] == 4 and st["listed"] == 3
+    assert st["new"] == 1 and st["possible"] == 1 and st["accepted"] == 1
+    assert st["declined"] == 0 and st["completed"] == 0 and st["not_possible"] == 0
+
+
+def test_mark_can_clear_stage(tmp_path):
+    s = LeadStore(str(tmp_path / "db.duckdb"))
+    s.upsert([_rec("A")])
+    s.mark("A", stage="new")
+    assert s.stats()["listed"] == 1
+    s.mark("A", stage="")  # remove from the list
+    assert s.stats()["listed"] == 0
+    assert s.get(["A"])["A"]["stage"] is None
 
 
 def test_update_verification(tmp_path):
@@ -71,8 +85,8 @@ def test_persistence_across_reopen(tmp_path):
     path = str(tmp_path / "db.duckdb")
     s = LeadStore(path)
     s.upsert([_rec("A")])
-    s.mark("A", decision="keep")
+    s.mark("A", stage="accepted")
     s.close()
     s2 = LeadStore(path)  # reopen the same file
-    assert s2.stats()["total"] == 1
-    assert s2.saved("keep")[0]["place_id"] == "A"
+    assert s2.stats()["listed"] == 1
+    assert s2.saved("accepted")[0]["place_id"] == "A"

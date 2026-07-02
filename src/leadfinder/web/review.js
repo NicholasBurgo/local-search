@@ -7,100 +7,134 @@
   }
   function hasText(v) { return String(v == null ? "" : v).trim() !== ""; }
   function pillCls(q) { const n = Number(q) || 0; return n >= 70 ? "hi" : n >= 40 ? "mid" : "lo"; }
-  function telHref(p) { return "tel:" + String(p).replace(/[^0-9+]/g, ""); }
 
   async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
   function post(path, body) {
     return api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   }
 
-  let leads = [], filter = "undecided", stats = {};
-  const list = $("list");
+  // Visible pipeline columns (left to right) and the hidden archive stages.
+  const COLUMNS = [
+    { stage: "new", title: "Newly Added" },
+    { stage: "possible", title: "Possible" },
+    { stage: "accepted", title: "Accepted" },
+    { stage: "declined", title: "Declined" },
+  ];
+  const ARCHIVE = [
+    { stage: "completed", title: "Completed" },
+    { stage: "not_possible", title: "Not possible" },
+  ];
+  // Quick-move buttons offered on a card, by its current stage: [targetStage, label, tone].
+  const MOVES = {
+    new: [["possible", "Possible"], ["accepted", "Accept", "good"], ["declined", "Decline", "bad"]],
+    possible: [["accepted", "Accept", "good"], ["completed", "Complete", "good"], ["declined", "Decline", "bad"]],
+    accepted: [["completed", "Complete", "good"], ["possible", "Possible"], ["not_possible", "Drop", "bad"]],
+    declined: [["possible", "Reconsider"], ["not_possible", "Drop", "bad"]],
+    completed: [["accepted", "Reopen"]],
+    not_possible: [["possible", "Reopen"]],
+  };
 
-  function matches(l) {
-    if (filter === "keep") return l.decision === "keep";
-    if (filter === "reject") return l.decision === "reject";
-    if (filter === "undecided") return !l.decision;
-    return true; // all
-  }
+  let leads = [], showArchive = false, dragK = null;
 
   async function load() {
-    const res = await api("/api/saved?filter=" + encodeURIComponent(filter));
+    const res = await api("/api/saved?filter=listed");
     leads = res.leads || [];
-    stats = res.stats || {};
-    renderCounts();
-    renderList();
+    render();
   }
 
-  function renderCounts() {
-    $("c-keep").textContent = stats.keep || 0;
-    $("c-reject").textContent = stats.reject || 0;
-    $("c-left").textContent = stats.undecided || 0;
-    const total = stats.total || 0, done = (stats.keep || 0) + (stats.reject || 0);
-    $("progress-fill").style.width = (total ? (done / total) * 100 : 0).toFixed(1) + "%";
-  }
+  function byStage(s) { return leads.filter((l) => l.stage === s); }
 
-  function metaHtml(l) {
-    const line1 = [], line2 = [];
-    if (hasText(l.category)) line1.push('<span style="text-transform:capitalize">' + esc(String(l.category).replace(/_/g, " ")) + "</span>");
-    if (hasText(l.address)) line1.push(esc(l.address));
-    else if (hasText(l.city)) line1.push(esc(l.city));
-    if (hasText(l.phone)) line2.push('<a href="' + esc(telHref(l.phone)) + '">' + esc(l.phone) + "</a>");
-    if (hasText(l.email)) line2.push('<a href="mailto:' + esc(l.email) + '">' + esc(l.email) + "</a>");
-    if (hasText(l.socials)) line2.push('<a href="' + esc(String(l.socials).split("|")[0]) + '" target="_blank" rel="noopener">social</a>');
+  function cardHtml(l) {
+    const moves = (MOVES[l.stage] || []).map(([to, label, tone]) =>
+      '<button class="mv' + (tone ? " " + tone : "") + '" data-to="' + to + '" data-k="' + esc(l.place_id) + '">' + esc(label) + "</button>").join("");
+    const line1 = [
+      hasText(l.category) ? String(l.category).replace(/_/g, " ") : "",
+      l.address || l.city || "",
+    ].filter(Boolean).map(esc).join(" &middot; ");
+    const line2 = [];
+    if (hasText(l.phone)) line2.push('<a href="tel:' + esc(String(l.phone).replace(/[^0-9+]/g, "")) + '">' + esc(l.phone) + "</a>");
+    if (hasText(l.email)) line2.push('<a href="mailto:' + esc(l.email) + '">email</a>');
     if (hasText(l.verification_status)) line2.push(esc(l.verification_status));
-    let h = "";
-    if (line1.length) h += '<div class="meta">' + line1.join('<span class="sep">&middot;</span>') + "</div>";
-    if (line2.length) h += '<div class="meta">' + line2.join('<span class="sep">&middot;</span>') + "</div>";
-    return h;
-  }
-
-  function rowHtml(l) {
-    const dec = l.decision || "";
-    const chip = dec ? ' <span class="chip ' + dec + '">' + esc(dec) + "</span>" : "";
     return (
-      '<div class="row ' + dec + '" data-k="' + esc(l.place_id) + '">' +
-        '<div class="info">' +
-          '<div class="name">' + esc(l.name) +
-            ' <span class="pill ' + pillCls(l.quality) + '">' + esc(l.quality) + "</span>" + chip +
-          "</div>" + metaHtml(l) +
+      '<div class="pcard" draggable="true" data-k="' + esc(l.place_id) + '">' +
+        '<div class="pcard-top">' +
+          '<span class="pcard-name">' + esc(l.name) + "</span>" +
+          '<span class="pill ' + pillCls(l.quality) + '">' + esc(l.quality) + "</span>" +
+          '<button class="pcard-rm" title="Remove from list" data-rm="' + esc(l.place_id) + '">&times;</button>' +
         "</div>" +
-        '<div class="acts">' +
-          '<button class="mk keep' + (dec === "keep" ? " on" : "") + '" data-act="keep" title="Keep (K)">&#10003;<span class="lbl">Keep</span></button>' +
-          '<button class="mk reject' + (dec === "reject" ? " on" : "") + '" data-act="reject" title="Reject (X)">&#10007;<span class="lbl">Reject</span></button>' +
-        "</div>" +
+        (line1 ? '<div class="pcard-meta">' + line1 + "</div>" : "") +
+        (line2.length ? '<div class="pcard-meta">' + line2.join(" &middot; ") + "</div>" : "") +
+        '<div class="pcard-acts">' + moves + "</div>" +
       "</div>"
     );
   }
 
-  function renderList() {
-    $("count").textContent = leads.length + (leads.length === 1 ? " lead" : " leads");
-    if (!leads.length) {
-      list.innerHTML = '<div class="rev-empty"><h2>Nothing here</h2><p>No leads in "' + esc(filter) +
-        '". Switch the filter above, or head to the map to pull more.</p></div>';
-      return;
-    }
-    list.innerHTML = leads.map(rowHtml).join("");
+  function colHtml(col) {
+    const items = byStage(col.stage);
+    const body = items.length ? items.map(cardHtml).join("") : '<div class="col-empty">Drop leads here</div>';
+    return (
+      '<div class="col" data-stage="' + col.stage + '">' +
+        '<div class="col-head"><span class="col-title">' + esc(col.title) + '</span>' +
+        '<span class="col-count">' + items.length + "</span></div>" +
+        '<div class="col-body">' + body + "</div>" +
+      "</div>"
+    );
   }
 
-  async function mark(k, act) {
+  function render() {
+    const n = leads.length;
+    $("sub-count").textContent = n + (n === 1 ? " lead" : " leads") + " on your list";
+    if (!n) {
+      $("board").innerHTML = '<div class="rev-empty"><h2>Your list is empty</h2><p>Head to the <a href="/">map</a>, find businesses, and hit <b>+ Add to list</b>. They land in Newly Added here.</p></div>';
+      $("archive").hidden = true; $("archive").innerHTML = "";
+      $("archive-btn").hidden = true;
+      return;
+    }
+    $("archive-btn").hidden = false;
+    $("board").innerHTML = COLUMNS.map(colHtml).join("");
+    const arch = $("archive");
+    if (showArchive) {
+      arch.hidden = false;
+      arch.innerHTML = '<div class="board">' + ARCHIVE.map(colHtml).join("") + "</div>";
+    } else {
+      arch.hidden = true; arch.innerHTML = "";
+    }
+    const na = byStage("completed").length + byStage("not_possible").length;
+    $("archive-btn").textContent = (showArchive ? "Hide archive" : "Show archive") + (na ? " (" + na + ")" : "");
+  }
+
+  async function move(k, to) {
     const l = leads.find((x) => x.place_id === k);
     if (!l) return;
-    const decision = l.decision === act ? "" : act; // click active again -> undo
-    l.decision = decision;
-    const res = await post("/api/mark", { place_id: k, decision });
-    if (res && res.stats) { stats = res.stats; renderCounts(); }
-    const row = list.querySelector('.row[data-k="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
-    if (matches(l)) {
-      // update in place
-      if (row) row.outerHTML = rowHtml(l);
-    } else {
-      // no longer in this filter -> drop from the list
-      leads = leads.filter((x) => x.place_id !== k);
-      if (row) row.remove();
-      $("count").textContent = leads.length + (leads.length === 1 ? " lead" : " leads");
-      if (!leads.length) renderList();
-    }
+    l.stage = to || null;
+    if (!to) leads = leads.filter((x) => x.place_id !== k); // removed from the list entirely
+    render();
+    await post("/api/mark", { place_id: k, stage: to || "" });
+  }
+
+  function wireDnD(wrap) {
+    wrap.addEventListener("dragstart", (e) => {
+      const c = e.target.closest(".pcard"); if (!c) return;
+      dragK = c.dataset.k; c.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", dragK); } catch (_) { /* ignore */ }
+    });
+    wrap.addEventListener("dragend", (e) => {
+      const c = e.target.closest(".pcard"); if (c) c.classList.remove("dragging");
+      document.querySelectorAll(".col.drop").forEach((x) => x.classList.remove("drop"));
+      dragK = null;
+    });
+    wrap.addEventListener("dragover", (e) => { if (e.target.closest(".col")) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; } });
+    wrap.addEventListener("dragenter", (e) => { const col = e.target.closest(".col"); if (col) col.classList.add("drop"); });
+    wrap.addEventListener("dragleave", (e) => { const col = e.target.closest(".col"); if (col && !col.contains(e.relatedTarget)) col.classList.remove("drop"); });
+    wrap.addEventListener("drop", (e) => {
+      const col = e.target.closest(".col"); if (!col || !dragK) return;
+      e.preventDefault();
+      const to = col.dataset.stage, k = dragK;
+      col.classList.remove("drop");
+      const l = leads.find((x) => x.place_id === k);
+      if (l && l.stage !== to) move(k, to);
+    });
   }
 
   function initTheme() {
@@ -120,13 +154,14 @@
   }
 
   function wire() {
-    $("filter").addEventListener("change", (e) => { filter = e.target.value; load(); });
-    list.addEventListener("click", (e) => {
-      const btn = e.target.closest(".mk");
-      if (!btn) return;
-      const row = btn.closest(".row");
-      if (row) mark(row.dataset.k, btn.dataset.act);
+    const wrap = $("board-wrap");
+    wrap.addEventListener("click", (e) => {
+      const mv = e.target.closest(".mv"); if (mv) { move(mv.dataset.k, mv.dataset.to); return; }
+      const rm = e.target.closest(".pcard-rm"); if (rm) { move(rm.dataset.rm, ""); return; }
     });
+    $("archive-btn").addEventListener("click", () => { showArchive = !showArchive; render(); });
+    $("refresh-btn").addEventListener("click", load);
+    wireDnD(wrap);
   }
 
   initTheme();

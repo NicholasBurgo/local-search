@@ -4,11 +4,11 @@
 
   // ---------- state ----------
   function load(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }
-  function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
 
   const state = {
     center: null, radius: 10, leads: [], selected: null,
-    checked: load("lf.checked", {}) || {},
+    checked: load("lf.checked", {}) || {},  // offline mirror of "on the list" (by key)
     hideDone: !!load("lf.hide", false),
     cfg: { defaultLocation: "Covington LA", defaultRadius: 10, categories: [] },
   };
@@ -18,13 +18,14 @@
   function hasText(v) { return String(v == null ? "" : v).trim() !== ""; }
   function scoreColor(q) { const n = Number(q) || 0; return n >= 70 ? "#2F7D4F" : n >= 40 ? "#A97A0B" : "#8A9187"; }
   function keyOf(l) { return String(l.place_id || "") || ((l.name || "") + "|" + (l.city || "")).toLowerCase(); }
-  function isDone(l) { return l.contacted === true || !!state.checked[keyOf(l)]; }
+  // "On the list" = has a pipeline stage (server truth), or was just added locally.
+  function isListed(l) { return !!l.stage || !!state.checked[keyOf(l)]; }
   function removed(l) { const s = l.verification_status; return s === "REMOVED_HAS_WEBSITE" || s === "REMOVED_CHAIN"; }
   function coordOf(l) { const a = Number(l.latitude), b = Number(l.longitude); return isFinite(a) && isFinite(b) && (a || b) ? [a, b] : null; }
   function telLink(v) { return hasText(v) ? '<a href="tel:' + esc(String(v).replace(/[^0-9+]/g, "")) + '">' + esc(v) + "</a>" : ""; }
   function mailLink(v) { return hasText(v) ? '<a href="mailto:' + esc(v) + '">' + esc(v) + "</a>" : ""; }
   function pillCls(q) { return q >= 70 ? "hi" : q >= 40 ? "mid" : "lo"; }
-  function visible() { return state.hideDone ? state.leads.filter((l) => !isDone(l)) : state.leads; }
+  function visible() { return state.hideDone ? state.leads.filter((l) => !isListed(l)) : state.leads; }
 
   // ---------- api ----------
   async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
@@ -48,8 +49,14 @@
   }
   function leadByKey(k) { return state.leads.find((l) => keyOf(l) === k); }
   function markerStyle(l) {
-    const on = state.selected === keyOf(l), faded = isDone(l) || removed(l);
-    return { radius: on ? 10 : 7, color: on ? "#0E6B5C" : "#ffffff", weight: on ? 3 : 1.5, fillColor: removed(l) ? "#BBBBBB" : scoreColor(l.quality), fillOpacity: faded ? 0.4 : 0.92 };
+    const on = state.selected === keyOf(l), listed = isListed(l);
+    return {
+      radius: on ? 10 : listed ? 8 : 7,
+      color: on || listed ? "#0E6B5C" : "#ffffff",  // leads on the list get an accent ring
+      weight: on ? 3 : listed ? 2.5 : 1.5,
+      fillColor: removed(l) ? "#BBBBBB" : scoreColor(l.quality),
+      fillOpacity: removed(l) ? 0.4 : 0.92,
+    };
   }
   function popup(l) {
     const c = coordOf(l);
@@ -62,7 +69,7 @@
     if (hasText(l.phone)) contacts.push('<a class="pop-link" href="tel:' + esc(String(l.phone).replace(/[^0-9+]/g, "")) + '">Call ' + esc(l.phone) + "</a>");
     if (hasText(l.email)) contacts.push('<a class="pop-link" href="mailto:' + esc(l.email) + '">' + esc(l.email) + "</a>");
     if (contacts.length) h += '<div class="pop-contact">' + contacts.join("") + "</div>";
-    h += '<div class="pop-actions"><button type="button" class="pop-btn primary" data-act="toggle" data-k="' + esc(keyOf(l)) + '">' + (isDone(l) ? "Undo contacted" : "Mark contacted") + "</button>";
+    h += '<div class="pop-actions"><button type="button" class="pop-btn primary" data-act="toggle" data-k="' + esc(keyOf(l)) + '">' + (isListed(l) ? "Remove from list" : "+ Add to list") + "</button>";
     if (dir) h += '<a class="pop-btn" href="' + dir + '" target="_blank" rel="noopener">Directions</a>';
     h += "</div></div>";
     return h;
@@ -81,29 +88,29 @@
     });
     if (RING) { MAP.removeLayer(RING); RING = null; }
     if (state.center) RING = L.circle(state.center, { radius: state.radius * 1609.34, color: "#0E6B5C", weight: 1, fill: false, dashArray: "5,5", interactive: false }).addTo(MAP);
-    if (fit && pts.length) { try { MAP.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 15 }); } catch (e) {} }
+    if (fit && pts.length) { try { MAP.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 15 }); } catch (e) { /* ignore */ } }
     else if (fit && state.center) MAP.setView(state.center, 12);
   }
 
   // ---------- results ----------
   function cardHtml(l) {
-    const k = keyOf(l), done = isDone(l);
-    return '<div class="card ' + (state.selected === k ? "sel " : "") + (done ? "done " : "") + (removed(l) ? "removed" : "") + '" data-k="' + esc(k) + '">'
-      + '<div class="card-top"><input type="checkbox" class="chk" data-k="' + esc(k) + '"' + (done ? " checked" : "") + ' aria-label="Mark contacted">'
-      + '<span class="card-name">' + esc(l.name) + "</span>"
+    const k = keyOf(l), listed = isListed(l);
+    return '<div class="card ' + (state.selected === k ? "sel " : "") + (listed ? "listed " : "") + (removed(l) ? "removed" : "") + '" data-k="' + esc(k) + '">'
+      + '<div class="card-top"><span class="card-name">' + esc(l.name) + "</span>"
       + '<span class="pill ' + pillCls(l.quality) + '">' + esc(l.quality) + "</span></div>"
       + '<div class="card-meta">' + esc(l.category || "") + (l.verification_status ? " &middot; " + esc(l.verification_status) : "") + "</div>"
       + (hasText(l.phone) || hasText(l.email) ? '<div class="card-links">' + telLink(l.phone) + " " + mailLink(l.email) + "</div>" : "")
       + (hasText(l.address) ? '<div class="card-addr">' + esc(l.address) + "</div>" : "")
+      + '<button type="button" class="add-btn' + (listed ? " on" : "") + '" data-add="' + esc(k) + '">' + (listed ? "✓ On list" : "+ Add to list") + "</button>"
       + "</div>";
   }
   function renderCards() {
     const list = visible();
     $("cards").innerHTML = list.length ? list.map(cardHtml).join("")
-      : '<div class="empty">' + (state.leads.length ? "All leads hidden. Uncheck \"Hide contacted\"." : "No businesses with no website in this area. Try a bigger radius.") + "</div>";
-    const n = state.leads.length, done = state.leads.filter(isDone).length;
+      : '<div class="empty">' + (state.leads.length ? "All leads hidden. Uncheck \"Hide listed\"." : "No businesses with no website in this area. Try a bigger radius.") + "</div>";
+    const n = state.leads.length, listed = state.leads.filter(isListed).length;
     $("result-count").textContent = n + " lead" + (n === 1 ? "" : "s");
-    $("progress-text").textContent = n ? done + " / " + n + " contacted" : "";
+    $("progress-text").textContent = listed ? listed + " on list" : "";
   }
   function renderAll(fit) { renderMap(fit); renderCards(); }
 
@@ -116,19 +123,19 @@
     if (fromMap) { const el = [...$("cards").children].find((e) => e.dataset && e.dataset.k === k); if (el) el.scrollIntoView({ block: "nearest" }); }
   }
 
-  // Toggle "contacted" from a map popup button (keeps the popup open + in sync).
-  // Single source for "contacted": updates state + localStorage + the DB, re-renders.
-  function setContacted(k, on) {
+  // Add/remove a lead to the review pipeline (stage "new"). Single source of truth:
+  // updates state + localStorage mirror + the DB, and re-renders marker/card.
+  function setListed(k, on) {
     if (on) state.checked[k] = true; else delete state.checked[k];
     save("lf.checked", state.checked);
     const l = leadByKey(k);
-    if (l) l.contacted = on;
+    if (l) l.stage = on ? "new" : null;
     const m = markers[k];
     if (l && m) { m.setStyle(markerStyle(l)); m.setPopupContent(popup(l)); }
     renderCards();
-    post("/api/mark", { place_id: k, contacted: on }).catch(() => {});  // persist (best-effort)
+    post("/api/mark", { place_id: k, stage: on ? "new" : "" }).catch(() => {});  // persist (best-effort)
   }
-  function toggleContacted(k) { setContacted(k, !isDone(leadByKey(k) || {})); }
+  function toggleListed(k) { setListed(k, !isListed(leadByKey(k) || {})); }
 
   // ---------- overlay / banner ----------
   function overlay(on, text) { $("overlay").hidden = !on; if (text) $("overlay-text").textContent = text; }
@@ -149,7 +156,7 @@
     if (res.error) { banner(res.error, "error"); return; }
     state.center = res.center; state.leads = res.leads || []; state.selected = null;
     renderAll(true);
-    banner(res.count + " businesses with no website on file within " + state.radius + " mi. Click Verify to drop any that actually have a site.", "ok");
+    banner(res.count + " businesses with no website on file within " + state.radius + " mi. Add the good ones to your list, then open Review.", "ok");
   }
 
   async function doVerify() {
@@ -187,15 +194,15 @@
     if (pts.length) { let la = 0, lo = 0; pts.forEach((p) => { la += p[0]; lo += p[1]; }); state.center = [la / pts.length, lo / pts.length]; }
     renderAll(true);
     const st = res.stats || {};
-    banner((res.count || 0) + " saved leads (" + (st.keep || 0) + " kept, " + (st.reject || 0) + " rejected, " + (st.contacted || 0) + " contacted).", "ok");
+    banner((res.count || 0) + " stored leads (" + (st.listed || 0) + " on your list).", "ok");
   }
 
   function csvCell(v) { v = v == null ? "" : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
   function exportCSV() {
     if (!state.leads.length) { banner("Nothing to export yet.", "error"); return; }
-    const cols = ["contacted", "name", "city", "category", "phone", "email", "address", "website_uri", "source", "confidence", "quality", "verification_status", "latitude", "longitude"];
+    const cols = ["stage", "name", "city", "category", "phone", "email", "address", "website_uri", "source", "confidence", "quality", "verification_status", "latitude", "longitude"];
     const lines = [cols.join(",")];
-    state.leads.forEach((l) => { const rec = Object.assign({ contacted: isDone(l) ? "yes" : "" }, l); lines.push(cols.map((c) => csvCell(rec[c])).join(",")); });
+    state.leads.forEach((l) => { lines.push(cols.map((c) => csvCell(c === "stage" ? (l.stage || "") : l[c])).join(",")); });
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "leadfinder_leads.csv";
     document.body.appendChild(a); a.click(); a.remove();
@@ -241,7 +248,7 @@
     // Popup action buttons (delegated: popups are added to the document dynamically).
     document.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-act]"); if (!btn) return;
-      if (btn.getAttribute("data-act") === "toggle") toggleContacted(btn.getAttribute("data-k"));
+      if (btn.getAttribute("data-act") === "toggle") toggleListed(btn.getAttribute("data-k"));
     });
 
     const radius = $("radius");
@@ -252,8 +259,8 @@
     $("hide-done").addEventListener("change", (e) => { state.hideDone = !!e.target.checked; save("lf.hide", state.hideDone); renderAll(false); });
 
     $("cards").addEventListener("click", (e) => {
-      const chk = e.target.closest(".chk");
-      if (chk) { setContacted(chk.dataset.k, chk.checked); return; }
+      const add = e.target.closest(".add-btn");
+      if (add) { e.stopPropagation(); toggleListed(add.dataset.add); return; }
       if (e.target.closest("a")) return;
       const card = e.target.closest(".card"); if (card) selectLead(card.dataset.k, false);
     });
