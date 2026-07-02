@@ -60,3 +60,11 @@ def test_invalid_source_rejected(monkeypatch):
     monkeypatch.setenv("SEARCH_CITIES", "Covington LA")
     with pytest.raises(ValueError, match="source"):
         Settings.from_env(source="bing")
+
+
+def test_radius_miles_parse(monkeypatch):
+    monkeypatch.setenv("SEARCH_CITIES", "Covington LA")
+    assert Settings.from_env().radius_miles is None
+    assert Settings.from_env(radius_miles=15).radius_miles == 15.0
+    with pytest.raises(ValueError, match="radius_miles"):
+        Settings.from_env(radius_miles=500)

@@ -1,7 +1,12 @@
 import json
 
 from leadfinder.config import Settings
-from leadfinder.sources.overture import OvertureSource, build_query, row_to_lead
+from leadfinder.sources.overture import (
+    OvertureSource,
+    build_query,
+    fetch_overture_bbox,
+    row_to_lead,
+)
 
 BBOX = (-90.17, 30.43, -90.05, 30.55)
 
@@ -111,10 +116,49 @@ def test_source_jobs_and_fetch(tmp_path):
     source = OvertureSource(settings, query_runner=fake_runner, bbox_resolver=lambda city: BBOX)
     jobs = source.jobs()
     assert len(jobs) == 1
-    assert jobs[0].key == "Covington LA|overture:2026-06-17.0"
+    assert jobs[0].key.startswith("Covington LA|overture:2026-06-17.0:")
 
     leads = jobs[0].run()
     assert "websites IS NULL" in captured["sql"]
     assert len(leads) == 1  # low-confidence row filtered
     assert leads[0].name == "Joe's Diner"
     assert "overture" in (source.preflight() or "")
+
+
+def test_fetch_overture_bbox_shared_helper():
+    captured = {}
+
+    def fake_runner(sql):
+        captured["sql"] = sql
+        return [_row()]
+
+    leads = fetch_overture_bbox(
+        BBOX,
+        release="2026-06-17.0",
+        min_confidence=0.5,
+        allowed_categories=None,
+        query_runner=fake_runner,
+        city="Covington LA",
+    )
+    assert "bbox.xmin BETWEEN -90.17 AND -90.05" in captured["sql"]
+    assert len(leads) == 1 and leads[0].source == "overture"
+
+
+def test_different_radius_gives_different_job_key():
+    base = dict(cities=["Covington LA"], source="overture", output_dir="/tmp")
+    k10 = OvertureSource(Settings(**base, radius_miles=10)).jobs()[0].key
+    k20 = OvertureSource(Settings(**base, radius_miles=20)).jobs()[0].key
+    k_city = OvertureSource(Settings(**base)).jobs()[0].key
+    assert k10 != k20 != k_city and k10 != k_city  # each re-queries, no stale checkpoint reuse
+
+
+def test_radius_expands_bbox_around_center():
+    settings = Settings(
+        cities=["Covington LA"], source="overture", radius_miles=20, output_dir="/tmp"
+    )
+    source = OvertureSource(settings, query_runner=lambda sql: [], bbox_resolver=lambda city: BBOX)
+    # BBOX center is ~(30.49, -90.11); a 20-mile radius must widen well past it
+    west, south, east, north = source._resolve_bbox("Covington LA")
+    assert east - west > (BBOX[2] - BBOX[0])  # wider than the city's own bbox
+    assert north - south > (BBOX[3] - BBOX[1])
+    assert north - south < 0.7  # 20 mi ~ 0.58 deg lat, sanity bound

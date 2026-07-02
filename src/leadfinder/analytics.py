@@ -37,6 +37,8 @@ _RECORD_FIELDS = [
     "place_id",
     "source",
     "confidence",
+    "latitude",
+    "longitude",
 ]
 
 
@@ -132,9 +134,13 @@ def lead_records(df: pd.DataFrame) -> list[dict]:
         return []
     scores = _lead_scores(df)
     present = [c for c in _RECORD_FIELDS if c in df.columns]
-    rating = pd.to_numeric(df["rating"], errors="coerce") if "rating" in df else None
-    reviews = pd.to_numeric(df["review_count"], errors="coerce") if "review_count" in df else None
-    confidence = pd.to_numeric(df["confidence"], errors="coerce") if "confidence" in df else None
+    # Numeric columns are coerced to plain Python floats/ints so json.dumps
+    # (allow_nan=False) never chokes on a numpy scalar or a NaN.
+    numeric = {
+        c: pd.to_numeric(df[c], errors="coerce")
+        for c in ("rating", "review_count", "confidence", "latitude", "longitude")
+        if c in df
+    }
 
     records: list[dict] = []
     for i, (_, row) in enumerate(df.iterrows()):
@@ -142,15 +148,18 @@ def lead_records(df: pd.DataFrame) -> list[dict]:
         for field in _RECORD_FIELDS:
             value = row[field] if field in present else ""
             rec[field] = "" if pd.isna(value) else value
-        if rating is not None:
-            rv = rating.iloc[i]
-            rec["rating"] = "" if pd.isna(rv) else round(float(rv), 1)
-        if reviews is not None:
-            rc = reviews.iloc[i]
-            rec["review_count"] = "" if pd.isna(rc) else int(rc)
-        if confidence is not None:
-            cv = confidence.iloc[i]
-            rec["confidence"] = "" if pd.isna(cv) else round(float(cv), 2)
+        for col, series in numeric.items():
+            v = series.iloc[i]
+            if pd.isna(v):
+                rec[col] = ""
+            elif col == "review_count":
+                rec[col] = int(v)
+            elif col == "rating":
+                rec[col] = round(float(v), 1)
+            elif col == "confidence":
+                rec[col] = round(float(v), 2)
+            else:  # latitude / longitude keep full precision
+                rec[col] = float(v)
         rec["quality"] = round(scores[i])
         records.append(rec)
     return records
@@ -248,6 +257,19 @@ _CSS = """<style>
   .bar-fill { display:block; height:100%; background:var(--accent); }
   .bar-val { width:52px; text-align:right; font-variant-numeric:tabular-nums; }
   .empty { color:var(--muted); }
+  .map-card { padding:0; overflow:hidden; }
+  .map-head { display:flex; justify-content:space-between; align-items:center; gap:14px;
+              flex-wrap:wrap; padding:14px 18px; border-bottom:1px solid var(--line); }
+  .map-controls { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
+  .map-ctl { display:inline-flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
+  .map-ctl select { background:var(--card); color:var(--ink); border:1px solid var(--line);
+                    border-radius:8px; padding:6px 10px; font-size:13px; }
+  .map-ctl input[type=range] { accent-color:var(--accent); }
+  #map { height:400px; width:100%; background:var(--line); z-index:0; }
+  .map-note { padding:8px 18px; }
+  .leaflet-container { font:inherit; background:var(--line); }
+  .leaflet-popup-content { font-size:13px; line-height:1.5; }
+  .leaflet-popup-content a { color:var(--accent); }
   @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
 </style>"""
 
@@ -269,6 +291,23 @@ _MARKUP = """<div class="topbar">
     <select id="f-cat" aria-label="Filter by category">
       <option value="">All categories</option></select>
     <button id="f-export" type="button">Export filtered CSV</button>
+  </div>
+
+  <div class="card map-card" id="map-card">
+    <div class="map-head">
+      <div class="table-title"><h2 style="margin:0">Map</h2>
+        <span id="map-count" class="muted"></span></div>
+      <div class="map-controls">
+        <label class="map-ctl">Center
+          <select id="f-center"><option value="__all">Fit all leads</option></select>
+        </label>
+        <label class="map-ctl">Radius <span id="radius-label" class="muted">-</span>
+          <input type="range" id="f-radius" min="1" max="50" step="1" value="50">
+        </label>
+      </div>
+    </div>
+    <div id="map"></div>
+    <div id="map-note" class="muted map-note"></div>
   </div>
 
   <div class="card table-card">
@@ -342,12 +381,94 @@ const COLS = (function(){
   return c;
 })();
 
+// ---- map ----
+function haversineMiles(a, b){
+  const R=3958.7613, rad=d=>d*Math.PI/180;
+  const dphi=rad(b[0]-a[0]), dl=rad(b[1]-a[1]), p1=rad(a[0]), p2=rad(b[0]);
+  const h=Math.sin(dphi/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+  return 2*R*Math.asin(Math.min(1, Math.sqrt(h)));
+}
+function coordOf(l){ const la=Number(l.latitude), lo=Number(l.longitude); return (isFinite(la)&&isFinite(lo)&&(la!==0||lo!==0)) ? [la,lo] : null; }
+const COORD_LEADS = LEADS.map(l=>[l, coordOf(l)]).filter(x=>x[1]);
+function scoreColor(q){ const n=Number(q)||0; return n>=70?"#2F7D4F":(n>=40?"#A97A0B":"#8A9187"); }
+function centroid(pts){ if(!pts.length) return null; let la=0,lo=0; pts.forEach(p=>{la+=p[0];lo+=p[1];}); return [la/pts.length, lo/pts.length]; }
+
+const mapState = { map:null, tiles:null, ring:null, layer:null, center:null, radius:null, on:false };
+
+function withinRadius(l){
+  if(!mapState.on || mapState.center==null || mapState.radius==null) return true;
+  const c=coordOf(l); if(!c) return true;  // leads without coordinates always pass
+  return haversineMiles(mapState.center, c) <= mapState.radius + 1e-9;
+}
+
+function popupHtml(l){
+  const b=['<strong>'+esc(l.name)+'</strong>'];
+  b.push('<div class="muted">'+esc(l.category||"")+' &middot; score '+esc(l.quality)+'</div>');
+  if(hasText(l.phone)) b.push('<div>'+telLink(l.phone)+'</div>');
+  if(hasText(l.email)) b.push('<div>'+mailLink(l.email)+'</div>');
+  if(hasText(l.address)) b.push('<div class="muted">'+esc(l.address)+'</div>');
+  return b.join("");
+}
+
+function setCenter(which, initial){
+  const pts = (which==="__all") ? COORD_LEADS.map(x=>x[1]) : COORD_LEADS.filter(x=>x[0].city===which).map(x=>x[1]);
+  const c = centroid(pts) || centroid(COORD_LEADS.map(x=>x[1]));
+  mapState.center = c;
+  const far = Math.max(1, ...COORD_LEADS.map(x=>haversineMiles(c, x[1])));
+  const slider = $("f-radius");
+  slider.max = String(Math.ceil(far)+1);
+  if(initial || mapState.radius==null || mapState.radius > Number(slider.max)){ mapState.radius = Number(slider.max); slider.value = slider.max; }
+  $("radius-label").textContent = mapState.radius + " mi";
+  render();
+  if(mapState.map){
+    if(which==="__all"){ const bnds=L.latLngBounds(COORD_LEADS.map(x=>x[1])); if(bnds.isValid()) mapState.map.fitBounds(bnds, {padding:[30,30]}); }
+    else { mapState.map.setView(c, 13); }
+  }
+}
+
+function updateMap(rows){
+  if(!mapState.on) return;
+  mapState.layer.clearLayers();
+  const shown = rows.filter(coordOf);
+  shown.forEach(l=>{
+    L.circleMarker(coordOf(l), {radius:7, color:"#ffffff", weight:1.5, fillColor:scoreColor(l.quality), fillOpacity:.92})
+      .bindPopup(popupHtml(l)).addTo(mapState.layer);
+  });
+  if(mapState.ring){ mapState.map.removeLayer(mapState.ring); mapState.ring=null; }
+  if(mapState.center && mapState.radius){
+    mapState.ring = L.circle(mapState.center, {radius: mapState.radius*1609.34, color:"#0E6B5C", weight:1, fill:false, dashArray:"5,5"}).addTo(mapState.map);
+  }
+  const mc=$("map-count"); if(mc) mc.textContent = shown.length + " on map";
+}
+
+function initMap(){
+  if(typeof L==="undefined" || !COORD_LEADS.length){ const card=$("map-card"); if(card) card.style.display="none"; return; }
+  mapState.on = true;
+  const map = L.map("map", {scrollWheelZoom:true});
+  mapState.map = map;
+  const tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:"&copy; OpenStreetMap contributors"});
+  let errs=0;
+  tiles.on("tileerror", ()=>{ if(errs++===0){ const n=$("map-note"); if(n) n.textContent="Street tiles are hidden in the shared view. Open this file locally for streets - pins and radius still work here."; } });
+  tiles.addTo(map);
+  mapState.tiles = tiles;
+  mapState.layer = L.layerGroup().addTo(map);
+
+  const sel=$("f-center");
+  Array.from(new Set(COORD_LEADS.map(x=>x[0].city).filter(Boolean))).sort().forEach(city=>{
+    const o=document.createElement("option"); o.value=city; o.textContent=city; sel.appendChild(o);
+  });
+  sel.addEventListener("change", ()=>setCenter(sel.value));
+  $("f-radius").addEventListener("input", e=>{ mapState.radius=Number(e.target.value); $("radius-label").textContent=mapState.radius+" mi"; render(); });
+  setCenter("__all", true);
+}
+
 function filtered(){
   const q = state.q.trim().toLowerCase();
   let rows = LEADS.filter(l=>{
     if(state.hideDone && isChecked(l)) return false;
     if(state.city && l.city!==state.city) return false;
     if(state.cat && l.category!==state.cat) return false;
+    if(!withinRadius(l)) return false;
     if(q){
       const hay = ((l.name||"")+" "+(l.address||"")+" "+(l.phone||"")+" "+(l.email||"")+" "+(l.city||"")).toLowerCase();
       if(!hay.includes(q)) return false;
@@ -418,6 +539,7 @@ function renderProgress(){
 
 function render(){
   const rows = filtered();
+  updateMap(rows);
   const done = renderProgress();
 
   const kpis = [
@@ -532,18 +654,43 @@ function init(){
     });
   });
 
+  initMap();
   render();
 }
 document.addEventListener("DOMContentLoaded", init);
 """
 
 
+_ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
+
+
+def _leaflet_assets() -> tuple[str, str]:
+    """Inline the vendored Leaflet CSS and JS (self-contained, no CDN)."""
+    with open(os.path.join(_ASSETS_DIR, "leaflet.css"), encoding="utf-8") as f:
+        css = f.read()
+    with open(os.path.join(_ASSETS_DIR, "leaflet.js"), encoding="utf-8") as f:
+        js = f.read()
+    return f"<style>\n{css}\n</style>", f"<script>\n{js}\n</script>"
+
+
 def _inner(source_name: str, leads: list[dict]) -> str:
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
     payload = json.dumps(leads, allow_nan=False).replace("<", "\\u003c")
     markup = _MARKUP.replace("__SOURCE__", html.escape(source_name)).replace("__DATE__", generated)
+    leaflet_css, leaflet_js = _leaflet_assets()
     return (
-        _CSS + "\n" + markup + "\n<script>\nconst LEADS = " + payload + ";\n" + _JS + "</script>\n"
+        leaflet_css
+        + "\n"
+        + _CSS
+        + "\n"
+        + markup
+        + "\n"
+        + leaflet_js
+        + "\n<script>\nconst LEADS = "
+        + payload
+        + ";\n"
+        + _JS
+        + "</script>\n"
     )
 
 

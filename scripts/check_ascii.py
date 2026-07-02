@@ -12,7 +12,16 @@ import sys
 
 CHECK_EXTS = {".py", ".md", ".toml", ".cfg", ".yml", ".yaml", ".txt"}
 CHECK_NAMES = {".env.example", ".gitignore"}
-SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "leads_output", "logs", ".pytest_cache"}
+SKIP_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "leads_output",
+    "logs",
+    ".pytest_cache",
+    "assets",
+}
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 

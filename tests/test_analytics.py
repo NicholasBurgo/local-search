@@ -127,6 +127,37 @@ def test_dashboard_is_a_checkable_worklist():
     assert leads[0]["place_id"] == "X1"
 
 
+def test_dashboard_has_map_with_coordinates():
+    df = _df(
+        [
+            {
+                "name": "A",
+                "city": "Covington LA",
+                "latitude": 30.48,
+                "longitude": -90.09,
+                "place_id": "1",
+                "phone": "555",
+            },
+            {
+                "name": "B",
+                "city": "Covington LA",
+                "latitude": 30.50,
+                "longitude": -90.10,
+                "place_id": "2",
+            },
+        ]
+    )
+    html = render_dashboard("leads.csv", lead_records(df))
+    assert 'id="map"' in html  # map container
+    assert 'id="f-radius"' in html and 'id="f-center"' in html  # radius + center controls
+    assert "L.circleMarker" in html  # vector pins
+    assert "haversineMiles" in html  # radius distance math
+    assert "leaflet" in html.lower()  # vendored Leaflet inlined
+    payload = html.split("const LEADS = ", 1)[1].split(";\n", 1)[0]
+    leads = json.loads(payload)
+    assert leads[0]["latitude"] == 30.48 and leads[0]["longitude"] == -90.09
+
+
 def test_dashboard_output_is_ascii():
     df = _df(
         [

@@ -16,7 +16,8 @@ from functools import partial
 
 from ..categories import category_for_types
 from ..config import Settings
-from ..geocode import Bbox, city_bbox
+from ..geo import Bbox, bbox_center, bbox_from_center
+from ..geocode import city_bbox
 from ..logging_setup import get_logger
 from ..models import Lead
 from .base import Job
@@ -78,6 +79,39 @@ def duckdb_query_runner(sql: str) -> list[tuple]:
         return con.execute(sql).fetchall()
     finally:
         con.close()
+
+
+def fetch_overture_bbox(
+    bbox: Bbox,
+    release: str,
+    min_confidence: float,
+    allowed_categories: list[str] | None,
+    query_runner: Callable[[str], list[tuple]] | None = None,
+    city: str = "",
+) -> list[Lead]:
+    """Query Overture for a bbox and map rows to Leads. Shared by the source,
+    the radius-scrape path, and the web server's search endpoint."""
+    logger = get_logger()
+    runner = query_runner or duckdb_query_runner
+    rows = runner(build_query(release, bbox))
+    logger.info("Overture returned %d candidate rows for bbox %s", len(rows), bbox)
+
+    now_d = datetime.now().strftime("%Y-%m-%d")
+    now_t = datetime.now().strftime("%H:%M:%S")
+    leads: list[Lead] = []
+    for row in rows:
+        lead = row_to_lead(
+            row,
+            city=city,
+            min_confidence=min_confidence,
+            allowed_categories=allowed_categories,
+            scraped_date=now_d,
+            scraped_time=now_t,
+        )
+        if lead is not None:
+            leads.append(lead)
+    logger.info("Kept %d leads after filters", len(leads))
+    return leads
 
 
 def _jlist(value) -> list:
@@ -190,34 +224,47 @@ class OvertureSource:
             f"release {self.settings.overture_release}, cost $0 (no key, no billing)"
         )
 
+    def _param_tag(self) -> str:
+        """Short hash of the params that change the result, so a checkpoint from a
+        different radius / confidence / bbox / categories does not get reused."""
+        import hashlib
+
+        raw = "|".join(
+            str(x)
+            for x in (
+                self.settings.radius_miles,
+                self.settings.min_confidence,
+                self.settings.categories,
+                self.settings.bbox,
+            )
+        )
+        return hashlib.md5(raw.encode()).hexdigest()[:6]
+
     def jobs(self) -> list[Job]:
         release = self.settings.overture_release
+        tag = self._param_tag()
         return [
-            Job(key=f"{city}|overture:{release}", run=partial(self._fetch, city))
+            Job(key=f"{city}|overture:{release}:{tag}", run=partial(self._fetch, city))
             for city in self.settings.cities
         ]
 
-    def _fetch(self, city: str) -> list[Lead]:
-        logger = get_logger()
-        bbox = self.settings.bbox or self.bbox_resolver(city)
-        logger.info("Overture bbox for %s: %s", city, bbox)
-        sql = build_query(self.settings.overture_release, bbox)
-        rows = self.query_runner(sql)
-        logger.info("Overture returned %d candidate rows for %s", len(rows), city)
+    def _resolve_bbox(self, city: str) -> Bbox:
+        if self.settings.bbox is not None:
+            return self.settings.bbox
+        geo_bbox = self.bbox_resolver(city)
+        if self.settings.radius_miles:
+            lat, lon = bbox_center(geo_bbox)
+            return bbox_from_center(lat, lon, self.settings.radius_miles)
+        return geo_bbox
 
-        now_d = datetime.now().strftime("%Y-%m-%d")
-        now_t = datetime.now().strftime("%H:%M:%S")
-        leads: list[Lead] = []
-        for row in rows:
-            lead = row_to_lead(
-                row,
-                city=city,
-                min_confidence=self.settings.min_confidence,
-                allowed_categories=self.settings.categories,
-                scraped_date=now_d,
-                scraped_time=now_t,
-            )
-            if lead is not None:
-                leads.append(lead)
-        logger.info("Kept %d leads for %s after filters", len(leads), city)
-        return leads
+    def _fetch(self, city: str) -> list[Lead]:
+        bbox = self._resolve_bbox(city)
+        get_logger().info("Overture bbox for %s: %s", city, bbox)
+        return fetch_overture_bbox(
+            bbox,
+            release=self.settings.overture_release,
+            min_confidence=self.settings.min_confidence,
+            allowed_categories=self.settings.categories,
+            query_runner=self.query_runner,
+            city=city,
+        )

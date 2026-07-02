@@ -74,12 +74,37 @@ the final arbiter of "no website."
 - **Click-to-call / click-to-email** (`tel:` / `mailto:` links).
 - **Export filtered CSV** including a `contacted` column.
 - **Light/dark theme** toggle, persisted.
+- **Map** of every lead with coordinates (OpenStreetMap), colored by score,
+  with a **center picker** and a **radius (miles) slider** that filters the
+  table and pins together. Click a pin for call/email/details.
 - Columns adapt to the data: rating columns appear only when the source
   provides ratings; an email column only when emails exist.
 
 Each lead gets a **score** (0-100): contactability (phone +25, email +15,
 socials +5, address +10) plus establishment (rating/reviews/hours for Google
 data; existence confidence for Overture data).
+
+The dashboard file works offline. Opened locally you get the full street map;
+in a shared/hosted view the street tiles are hidden (content security policy)
+but pins, radius, and the worklist still work.
+
+---
+
+## Interactive web app
+
+For changing location and radius *live* (fetching more leads as you widen the
+search), run the local web app:
+
+```bash
+uv run leadfinder serve            # http://127.0.0.1:8000
+```
+
+Search any location, drag the **radius slider** (a bigger radius re-queries
+Overture and shows more businesses), plot every result on a real street map,
+click **Verify** to probe domains and drop the ones that actually have a site,
+and **Export CSV**. Local-only by default; needs internet for the map tiles.
+The `scrape` command also takes `--radius <miles>` to widen the area for the
+static dashboard.
 
 ---
 
@@ -89,8 +114,9 @@ data; existence confidence for Overture data).
 # Scrape specific cities and categories
 uv run leadfinder scrape --cities "Covington LA" --categories food_beverage home_services
 
-# Overture tuning: confidence floor and manual bounding box
+# Overture tuning: confidence floor, radius (miles), or a manual bounding box
 uv run leadfinder scrape --min-confidence 0.4
+uv run leadfinder scrape --radius 15
 uv run leadfinder scrape --bbox " -90.17,30.43,-90.05,30.55"
 
 # Verify with more concurrency
@@ -98,6 +124,9 @@ uv run leadfinder verify --probe-concurrency 20
 
 # Dashboard from a specific output directory
 uv run leadfinder dashboard --output-dir leads_output
+
+# Interactive map + live location/radius search
+uv run leadfinder serve --port 8000
 ```
 
 Every flag has an `.env` equivalent; flags override for that run only and never
@@ -158,6 +187,7 @@ src/leadfinder/
   domains.py         chain/social domain filters
   names.py           name normalization, domain guessing, fuzzy match
   geocode.py         city -> bbox via Nominatim (cached, state-code aware)
+  geo.py             miles <-> bbox, haversine distance
   sources/
     base.py          Job protocol shared by all sources
     google.py        Places API (New) keyword searches
@@ -170,7 +200,10 @@ src/leadfinder/
   scrape.py          source-agnostic scrape loop
   probe.py           async HTTP domain probing
   verify.py          verify pipeline
-  analytics.py       interactive worklist dashboard
+  analytics.py       interactive worklist dashboard (map + radius)
+  server.py          local web app (stdlib http.server)
+  webui.py           web app HTML page
+  assets/            vendored Leaflet (third-party)
   cli.py             command-line interface
 tests/
 ```

@@ -33,6 +33,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/leadfinder"]
+artifacts = ["src/leadfinder/assets/*"]  # vendored Leaflet (third-party)
 
 [tool.ruff]
 line-length = 100
@@ -44,8 +45,9 @@ src = ["src", "tests"]
 select = ["E", "W", "F", "I", "UP", "B", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
-# analytics.py holds long embedded CSS/JS template constants.
+# These modules hold long embedded CSS/JS template constants.
 "src/leadfinder/analytics.py" = ["E501"]
+"src/leadfinder/webui.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

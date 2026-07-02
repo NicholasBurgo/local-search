@@ -50,6 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Overture: drop places below this existence confidence, 0-1 (default: 0.5)",
     )
     scrape_p.add_argument(
+        "--radius",
+        type=float,
+        default=None,
+        help="Overture: search this many miles around each city center (1-100)",
+    )
+    scrape_p.add_argument(
         "--bbox",
         default=None,
         help="Manual bounding box 'west,south,east,north' (skips geocoding)",
@@ -77,6 +83,14 @@ def build_parser() -> argparse.ArgumentParser:
     dash_p.add_argument("--output-dir", default=None, help="Where to find leads CSVs")
     dash_p.add_argument("--output-file", default=None, help="Dashboard HTML path")
 
+    serve_p = sub.add_parser("serve", help="Run the interactive local web app (map + live search)")
+    _add_common(serve_p)
+    serve_p.add_argument("--host", default=None, help="Bind host (default: 127.0.0.1)")
+    serve_p.add_argument("--port", type=int, default=None, help="Bind port (default: 8000)")
+    serve_p.add_argument(
+        "--min-confidence", type=float, default=None, help="Overture confidence floor (0-1)"
+    )
+
     return parser
 
 
@@ -88,6 +102,7 @@ def _settings_overrides(args: argparse.Namespace) -> dict:
         "api_key": getattr(args, "api_key", None),
         "source": getattr(args, "source", None),
         "min_confidence": getattr(args, "min_confidence", None),
+        "radius_miles": getattr(args, "radius", None),
         "bbox": getattr(args, "bbox", None),
         "field_profile": getattr(args, "profile", None),
         "max_results": getattr(args, "max_results", None),
@@ -122,6 +137,10 @@ def main(argv: list[str] | None = None) -> int:
                 output_dir=args.output_dir or "leads_output",
                 output_file=args.output_file,
             )
+        elif args.command == "serve":
+            from .server import main as run_serve
+
+            run_serve(host=args.host, port=args.port, **_settings_overrides(args))
     except KeyboardInterrupt:
         logger.info("Interrupted by user.")
         return 130

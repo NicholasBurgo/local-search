@@ -44,6 +44,12 @@ def _pick(overrides: dict[str, Any], key: str, env_key: str, default: Any) -> An
 SOURCE_CHOICES = ("overture", "google", "both")
 
 
+def _as_optional_float(raw) -> float | None:
+    if raw is None or raw == "":
+        return None
+    return float(raw)
+
+
 def _as_bbox(raw) -> tuple[float, float, float, float] | None:
     """Parse 'W,S,E,N' (or a 4-item sequence) into a bbox tuple."""
     if raw is None or raw == "":
@@ -70,6 +76,7 @@ class Settings:
     request_delay: float = 0.0  # optional politeness delay between API calls
     overture_release: str = "2026-06-17.0"  # pinned Overture data release
     min_confidence: float = 0.5  # drop Overture places below this existence confidence
+    radius_miles: float | None = None  # Overture: search this radius around the city center
     bbox: tuple[float, float, float, float] | None = None  # manual override, skips geocoding
     probe_concurrency: int = 10
     probe_timeout: float = 5.0
@@ -105,6 +112,7 @@ class Settings:
                 _pick(overrides, "overture_release", "OVERTURE_RELEASE", "2026-06-17.0")
             ),
             min_confidence=float(_pick(overrides, "min_confidence", "MIN_CONFIDENCE", 0.5)),
+            radius_miles=_as_optional_float(_pick(overrides, "radius_miles", "RADIUS_MILES", None)),
             bbox=_as_bbox(_pick(overrides, "bbox", "SEARCH_BBOX", None)),
             probe_concurrency=int(_pick(overrides, "probe_concurrency", "PROBE_CONCURRENCY", 10)),
             probe_timeout=float(_pick(overrides, "probe_timeout", "PROBE_TIMEOUT", 5.0)),
@@ -129,6 +137,8 @@ class Settings:
             raise ValueError("monthly_call_budget must be positive")
         if not 0 <= self.min_confidence <= 1:
             raise ValueError("min_confidence must be between 0 and 1")
+        if self.radius_miles is not None and not 0 < self.radius_miles <= 100:
+            raise ValueError("radius_miles must be between 0 and 100")
         if self.probe_concurrency < 1:
             raise ValueError("probe_concurrency must be at least 1")
         if self.probe_timeout <= 0:
