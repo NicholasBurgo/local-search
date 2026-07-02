@@ -1,355 +1,198 @@
-# 🎯 Local Business Lead Generator
+# Leadfinder
 
-### *Find businesses without websites. Build your client pipeline.*
+### Find local businesses without websites. Build your client pipeline.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+
+A Python tool that discovers local businesses without websites - useful for
+freelance web developers, digital agencies, and marketing consultants building a
+prospect list.
+
+The scraper reads business data from the Google Places API (New) and keeps only
+businesses whose `websiteUri` is empty. An optional verify stage then probes each
+business's likely domains over HTTP to remove false positives, and a dashboard
+command renders the results as a static HTML report.
 
 ---
 
-## 🎯 What It Does
+## What it does
 
-A powerful Python tool that automatically discovers local businesses without websites—perfect for:
-- 🎨 Freelance Web Developers
-- 🏢 Digital Agencies  
-- 💼 Marketing Consultants
-- 🚀 Web Design Entrepreneurs
-
-**The Problem:** Finding businesses without websites manually takes hours.
-**The Solution:** This tool automates the entire discovery process.
-
----
-
-## ✨ Key Features
-
-<table>
-<tr>
-<td width="50%">
-
-### 🔍 Smart Discovery
-- Searches 150+ business types
-- Multi-city support
-- 60+ results per search
-- Automated pagination
-
-</td>
-<td width="50%">
-
-### 🎯 Intelligent Filtering
-- Removes chain businesses
-- Filters out existing websites
-- Excludes social media profiles
-- Validates business status
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-### 📊 Rich Data Export
-- Business name & category
-- Phone & address
-- Ratings & reviews
-- Operating hours
-- 15+ data points per lead
-
-</td>
-<td width="50%">
-
-### 🛡️ Production Ready
-- API quota management
-- Rate limiting protection
-- Checkpoint recovery
-- Comprehensive logging
-- Stealth anti-detection
-
-</td>
-</tr>
-</table>
+- **Discovery** - searches a wide taxonomy (150+ business types across 12
+  categories) across the cities you configure.
+- **Filtering** - keeps only operational businesses with no website on file;
+  drops permanently closed ones.
+- **Verification (optional)** - probes candidate domains guessed from the
+  business name (no Google scraping), classifying each as no-website, has-website,
+  chain, or parked.
+- **Analytics** - a self-contained HTML dashboard: leads by city and category,
+  rating distribution, data-coverage, and a top-businesses table.
+- **Cost awareness** - a per-SKU monthly usage tracker with a soft budget and a
+  pre-flight cost estimate before each run.
 
 ---
 
-## 🚀 Quick Start (5 Minutes)
+## Requirements
 
-### Prerequisites
-- Python 3.8+
-- Google Places API key ([Get free key](https://developers.google.com/maps/documentation/places/web-service/get-api-key))
+- Python 3.10+
+- [uv](https://docs.astral.sh/uv/) for environment and dependency management
+- A Google Places API key with **Places API (New)** enabled
 
-### Installation
+---
+
+## Quick start
 
 ```bash
-# Clone and enter directory
-git clone https://github.com/ponderrr/local-search.git
-cd local-search
+# 1. Install dependencies into a managed virtual environment
+uv sync
 
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# Windows:
-venv\Scripts\activate
-# macOS/Linux:
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install browser for verification
-playwright install chromium
-```
-
-### Configuration
-
-```bash
-# Copy example config
+# 2. Configure
 cp .env.example .env
+#   edit .env: set GOOGLE_API_KEY and SEARCH_CITIES
 
-# Edit with your settings (required: API key and cities)
-nano .env  # or use your editor
+# 3. Collect leads
+uv run leadfinder scrape
+
+# 4. Verify (removes false positives) and build a dashboard
+uv run leadfinder verify
+uv run leadfinder dashboard
 ```
 
-### Run
-
-```bash
-# Scrape businesses
-python scrape_no_website.py
-
-# Verify results (removes chains/false positives)
-python verify_no_website.py
-
-# View analytics
-python analytics_dashboard.py
-```
-
-**Done!** Check `leads_output/` for your CSV files.
+Output CSVs land in `leads_output/`; verified leads in `leads_output/verified/`.
 
 ---
 
-## ⚙️ Configuration
+## Commands
 
-### Required Settings (.env file)
+```bash
+# Scrape specific cities and categories
+uv run leadfinder scrape --cities "Austin TX" "Denver CO" --categories food_beverage home_services
 
-```env
-GOOGLE_API_KEY=your_api_key_here
-SEARCH_CITIES=Austin TX, Portland OR, Denver CO
+# Cheaper run: fewer results per query and a tighter monthly budget
+uv run leadfinder scrape --max-results 10 --monthly-budget 1000
+
+# Verify the most recent leads file
+uv run leadfinder verify --probe-concurrency 20
+
+# Build a dashboard from the latest CSV in an output directory
+uv run leadfinder dashboard --output-dir leads_output
 ```
 
-### Optional Settings (with defaults)
+Every flag has an `.env` equivalent; flags override the `.env` value for that run
+only and never rewrite the file.
+
+Scrapes are resumable: progress is checkpointed per (city, keyword), so a run
+interrupted partway through picks up where it left off.
+
+---
+
+## Configuration
+
+Required (`.env`):
+
+| Setting | Description |
+|---------|-------------|
+| `GOOGLE_API_KEY` | Places API (New) key |
+| `SEARCH_CITIES` | Comma-separated `City State` list |
+
+Optional (defaults shown in `.env.example`):
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `API_DELAY` | 0.2 | Seconds between API calls |
-| `MAX_PAGES` | 3 | Pages per search (1-10) |
-| `CONCURRENT_BROWSERS` | 3 | Parallel verification browsers |
-| `HEADLESS` | true | Run browsers invisibly |
-| `OUTPUT_DIR` | leads_output | Where to save results |
-
-**Performance Tips:**
-- **Faster:** `API_DELAY=0.15`, `MAX_PAGES=2`, `CONCURRENT_BROWSERS=5`
-- **Safer:** `API_DELAY=0.3`, `MAX_PAGES=3`, `CONCURRENT_BROWSERS=2`
-
----
-
-## 📊 What You Get
-
-### Output Files
-
-```
-leads_output/
-├── all_leads_no_website_TIMESTAMP.csv           # All leads
-├── leads_CityName_TIMESTAMP.csv                 # By city
-├── leads_category_TIMESTAMP.csv                 # By category
-└── verified/
-    └── verified_no_website_TIMESTAMP.csv        # ⭐ Clean leads
-```
-
-### Data Fields (15+ per business)
-
-**Core Info:** Name, Phone, Address, City
-**Engagement:** Rating, Reviews, Hours, Open Status
-**Intelligence:** Category, Price Level, Services, Accessibility
-
-### Expected Results
-
-| City Size | Population | Expected Leads |
-|-----------|-----------|----------------|
-| Small | 50k | 200-500 |
-| Medium | 200k | 500-1,200 |
-| Large | 1M+ | 1,200-3,000 |
-
-**Verification Rate:** 60-70% pass final verification
+| `FIELD_PROFILE` | `enterprise` | `essentials` / `pro` / `enterprise` / `atmosphere` |
+| `SEARCH_CATEGORIES` | (all) | Subset of category keys to search |
+| `MAX_RESULTS` | `20` | Results per query (Text Search caps at 20) |
+| `MONTHLY_CALL_BUDGET` | `5000` | Soft ceiling on billable calls per month |
+| `PROBE_CONCURRENCY` | `10` | Concurrent HTTP probes during verify |
+| `PROBE_TIMEOUT` | `5.0` | Per-probe timeout in seconds |
+| `OUTPUT_DIR` | `leads_output` | Where CSVs are written |
+| `LOG_LEVEL` | `INFO` | Logging verbosity |
 
 ---
 
-## 🏢 Business Categories (150+ Types)
+## API cost (important)
 
-The scraper searches 12 categories with 150+ specific business types:
+Pricing changed in 2025. The old "25,000 free requests/day" model is gone.
 
-**Food & Beverage** • **Retail** • **Health & Wellness** • **Professional Services** • **Home Services** • **Automotive** • **Entertainment** • **Education** • **Events** • **Manufacturing** • **Agriculture** • **Transportation**
+- Google now bills **per SKU** with **per-SKU monthly free tiers** (roughly
+  10,000 Essentials / 5,000 Pro / 1,000 Enterprise calls per month). The old
+  universal $200 monthly credit was retired in March 2025.
+- Billing is by **field mask**: the highest-tier field you request sets the SKU
+  for the entire call. The `websiteUri` field this tool depends on is an
+  **Enterprise** field, so scrape calls bill at the Enterprise Text Search SKU.
+- Because Text Search (New) returns `websiteUri` directly, leadfinder uses a
+  single Text Search call per query (no per-place Place Details call), which is
+  far cheaper than the old two-stage approach.
 
-Full list in `scrape_no_website.py` (easily customizable)
+leadfinder prints a pre-flight estimate (expected calls, SKU, free-tier
+remaining, estimated USD) before each run and stops at `MONTHLY_CALL_BUDGET`. To
+control spend, narrow `SEARCH_CATEGORIES`, lower `MAX_RESULTS`, or reduce the
+number of cities.
+
+See Google's [Places API usage and billing](https://developers.google.com/maps/documentation/places/web-service/usage-and-billing).
 
 ---
 
-## 🛡️ Anti-Detection & Stealth Features
+## Business categories
 
-Built-in measures to avoid detection and rate limiting:
+Twelve category groups, 150+ specific business types: food and beverage, retail,
+health and wellness, professional services, home services, automotive,
+entertainment and recreation, education and childcare, events and hospitality,
+manufacturing and wholesale, agriculture and pets, transportation and logistics.
 
-- ✅ Random delays between requests (0.5-3 seconds)
-- ✅ Rotating user agents
-- ✅ Browser fingerprint masking
-- ✅ Human-like interaction patterns
-- ✅ Exponential backoff on errors
-- ✅ API quota tracking and limits
+Edit `BUSINESS_CATEGORIES` in `src/leadfinder/categories.py` to customize.
 
 ---
 
-## 📈 Analytics Dashboard
-
-Generate interactive HTML dashboards:
+## Development
 
 ```bash
-python analytics_dashboard.py
+uv sync                 # install runtime + dev dependencies
+uv run ruff check .     # lint
+uv run ruff format .    # format
+uv run pytest           # run tests
 ```
 
-**Includes:**
-- Business distribution by city
-- Category breakdown charts
-- Data quality metrics
-- Rating statistics
-- Interactive visualizations
+Project layout:
 
----
-
-## 🔧 Advanced Usage
-
-### Custom Business Categories
-
-Edit `BUSINESS_CATEGORIES` in `scrape_no_website.py`:
-
-```python
-BUSINESS_CATEGORIES = {
-    "your_niche": [
-        "specific business type",
-        "another business type"
-    ]
-}
 ```
-
-### Command Line Interface
-
-```bash
-# Quick scrape specific cities
-python run_scraper.py --cities "Austin TX" "Seattle WA"
-
-# Scrape and verify in one command
-python run_scraper.py --cities "Denver CO" --verify
-
-# Resume interrupted scrape
-python run_scraper.py --resume
-
-# Custom settings
-python run_scraper.py --cities "NYC NY" --delay 0.3 --max-pages 2
+src/leadfinder/
+  config.py          settings from env/.env
+  models.py          Lead dataclass, enums, SKU/pricing tables
+  field_mask.py      Places API field masks per profile/SKU
+  categories.py      search taxonomy
+  domains.py         chain/social domain filters
+  names.py           name normalization, domain guessing, fuzzy match
+  places_client.py   Places API (New) gateway (google-maps-places)
+  mapping.py         Place proto -> Lead
+  usage.py           monthly per-SKU usage tracking + cost estimate
+  storage.py         checkpoints, de-duplication, CSV output
+  scrape.py          scrape pipeline
+  probe.py           async HTTP domain probing
+  verify.py          verify pipeline
+  analytics.py       HTML dashboard
+  cli.py             command-line interface
+tests/
 ```
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
-<details>
-<summary><b>❌ "GOOGLE_API_KEY not found"</b></summary>
+**`PERMISSION_DENIED` / `403`** - the API key does not have **Places API (New)**
+enabled (it is separate from the legacy Places API). Enable it in the Google
+Cloud Console and, ideally, restrict the key to that API.
 
-**Fix:**
-1. Ensure `.env` file exists in project root
-2. Verify API key format (starts with 'AIza')
-3. Enable Places API in Google Cloud Console
-4. No extra spaces around the key
-</details>
+**`GOOGLE_API_KEY not found`** - ensure `.env` exists and contains the key.
 
-<details>
-<summary><b>❌ "No leads found"</b></summary>
+**`No leads found`** - check remaining budget/quota, verify the city format
+(`"Austin TX"`, not `"Austin, Texas"`), and try a single city first.
 
-**Fix:**
-1. Check API quota in Google Cloud Console
-2. Verify city format: `"Austin TX"` not `"Austin, Texas"`
-3. Test with one city first
-4. Check logs in `logs/` directory
-</details>
-
-<details>
-<summary><b>❌ Playwright errors</b></summary>
-
-**Fix:**
-```bash
-playwright install chromium --force
-```
-</details>
-
-<details>
-<summary><b>⚠️ "API quota exceeded"</b></summary>
-
-**Fix:**
-- Wait 24 hours for quota reset
-- Upgrade to paid tier (100k requests/day)
-- Reduce `MAX_PAGES` in .env
-- Process fewer cities at once
-</details>
+**Run stopped early at the budget** - raise `MONTHLY_CALL_BUDGET` or narrow the
+search with `SEARCH_CATEGORIES` / `MAX_RESULTS`.
 
 ---
 
-## 📝 API Limits & Costs
+## License
 
-**Google Places API:**
-- **Free Tier:** 25,000 requests/day
-- **Cost After:** $17 per 1,000 requests
-- **Paid Tier:** 100,000+ requests/day
-
-**Tool automatically:**
-- ✅ Tracks your usage
-- ✅ Prevents quota exceeded errors
-- ✅ Shows remaining quota
-
----
-
-## 🔒 Security Best Practices
-
-1. **Never commit `.env`** - Already in .gitignore
-2. **Rotate API keys** every 90 days
-3. **Restrict API keys** by IP (optional)
-4. **Monitor usage** in Google Cloud Console
-5. **Use separate keys** for dev/production
-
----
-
-## 📄 License
-
-MIT License - See LICENSE file for details.
-
-**TL;DR:** Use commercially, modify freely, distribute openly. Just include the license.
-
----
-
-## 💬 Support
-
-- 📖 Check logs in `logs/` directory
-- 🔍 Review this README thoroughly
-- 🐛 Open issues on GitHub
-- 💡 Suggest features
-
----
-
-## 🙏 Acknowledgments
-
-- Google Places API for business data
-- Playwright for browser automation
-- Python community for amazing libraries
-
----
-
-<div align="center">
-
-**Made with ❤️ for web developers and digital agencies**
-
-⭐ Star this repo if it helps you land clients!
-
-</div>
+MIT License - see the LICENSE file.

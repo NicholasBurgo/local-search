@@ -47,11 +47,6 @@ Thumbs.db
 *.sublime-project
 *.sublime-workspace
 
-# Playwright
-playwright-report/
-playwright/.cache/
-test-results/
-
 # Logs
 *.log
 logs/
