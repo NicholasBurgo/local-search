@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lux Protocol - Today</title>
+  <link rel="stylesheet" href="/app.css">
+  <style>
+    body { overflow:auto; height:auto; }
+    .today-wrap { max-width:920px; margin:0 auto; padding:18px 18px 60px; }
+    .today-summary { display:flex; gap:14px; margin-bottom:22px; flex-wrap:wrap; }
+    .tsum { flex:1; min-width:140px; background:var(--card); border:1px solid var(--line);
+            border-radius:12px; padding:14px 16px; box-shadow:var(--shadow); }
+    .tsum-val { font-size:26px; font-weight:700; font-variant-numeric:tabular-nums; line-height:1.1; }
+    .tsum-val.due { color:var(--mid); }
+    .tsum-label { color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.6px; margin-top:3px; }
+
+    .today-sec { margin-bottom:26px; }
+    .today-sec h2 { font-family:Charter,Georgia,serif; font-size:17px; margin:0 0 3px; }
+    .today-sec .sub { color:var(--muted); font-size:12.5px; margin-bottom:12px; }
+
+    .qrow { display:flex; align-items:center; gap:14px; background:var(--card); border:1px solid var(--line);
+            border-left:3px solid transparent; border-radius:12px; padding:12px 15px; margin-bottom:9px; box-shadow:var(--shadow); }
+    .qrow.overdue { border-left-color:var(--mid); }
+    .qinfo { flex:1; min-width:0; }
+    .qname { font-weight:700; font-size:15.5px; display:inline-flex; align-items:center; gap:9px; flex-wrap:wrap; cursor:pointer; }
+    .qname:hover { color:var(--accent); }
+    .qstage { font-size:10px; text-transform:uppercase; letter-spacing:.5px; font-weight:700; padding:2px 8px;
+              border-radius:99px; background:var(--accent-soft); color:var(--accent); }
+    .qmeta { color:var(--muted); font-size:12.5px; margin-top:4px; }
+    .qmeta a { color:var(--accent); text-decoration:none; }
+    .qmeta a:hover { text-decoration:underline; }
+    .qwhen { font-size:12.5px; font-weight:600; margin-top:5px; color:var(--muted); }
+    .qwhen.due { color:var(--mid); }
+    .qacts { display:flex; gap:7px; flex:none; flex-wrap:wrap; justify-content:flex-end; }
+    .qacts .btn { padding:7px 12px; font-size:12.5px; }
+
+    .today-done { text-align:center; padding:70px 16px; color:var(--muted); }
+    .today-done h2 { color:var(--ink); font-family:Charter,Georgia,serif; margin-bottom:6px; }
+    @media (max-width:600px) { .qrow { flex-wrap:wrap; } .qacts { justify-content:flex-start; } }
+  </style>
+</head>
+<body>
+  <header class="appbar">
+    <a class="brand-block" href="/">
+      <svg class="logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 2C7.9 2 4.6 5.3 4.6 9.4c0 5.3 6.4 11.6 6.7 11.9.4.4 1 .4 1.4 0 .3-.3 6.7-6.6 6.7-11.9C19.4 5.3 16.1 2 12 2z" fill="currentColor"/>
+        <circle class="dot" cx="12" cy="9.4" r="2.6"/>
+      </svg>
+      <span class="brand-lines">
+        <span class="brand">Lux Protocol</span>
+        <span class="brand-sub">Sales</span>
+      </span>
+    </a>
+    <div class="appbar-spacer"></div>
+    <nav class="appbar-right">
+      <div class="nav-dd">
+        <button class="nav-trigger" type="button" aria-haspopup="true">Leads <span class="caret">&#9662;</span></button>
+        <div class="nav-menu">
+          <a href="/"><span class="mdot"></span> Map</a>
+          <a href="/review"><span class="mdot"></span> List</a>
+          <a href="/today" class="active"><span class="mdot"></span> Today</a>
+        </div>
+      </div>
+      <button id="theme-btn" class="iconbtn" type="button" title="Toggle light/dark">&#9681;</button>
+    </nav>
+  </header>
+
+  <div class="toolbar">
+    <span class="page-title">Today</span>
+    <div style="flex:1"></div>
+    <button id="refresh-btn" class="btn ghost" type="button" title="Reload">Refresh</button>
+  </div>
+
+  <main class="today-wrap">
+    <div class="today-summary" id="summary"></div>
+    <div id="content"></div>
+  </main>
+
+  <script src="/detail.js"></script>
+  <script src="/today.js"></script>
+</body>
+</html>

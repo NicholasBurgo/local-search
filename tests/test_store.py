@@ -99,6 +99,44 @@ def test_persistence_across_reopen(tmp_path):
     assert s2.saved("qualified")[0]["place_id"] == "A"
 
 
+def test_activities_log_and_timeline(tmp_path):
+    s = LeadStore(str(tmp_path / "db.duckdb"))
+    s.upsert([_rec("A")])
+    a1 = s.log_activity("A", "call", "left a voicemail")
+    s.log_activity("A", "note", "warm - call back")
+    assert a1["type"] == "call" and a1["body"] == "left a voicemail"
+    tl = s.activities_for("A")
+    assert [t["body"] for t in tl] == ["warm - call back", "left a voicemail"]  # newest first
+    assert tl[0]["id"] != tl[1]["id"]  # distinct ids from the sequence
+
+
+def test_follow_up_set_and_clear(tmp_path):
+    s = LeadStore(str(tmp_path / "db.duckdb"))
+    s.upsert([_rec("A")])
+    assert s.set_follow_up("A", days=3) is not None
+    assert s.get(["A"])["A"]["next_follow_up"] is not None
+    s.set_follow_up("A", days=None)  # clear
+    assert s.get(["A"])["A"]["next_follow_up"] is None
+
+
+def test_follow_up_queue_due_and_stale(tmp_path):
+    s = LeadStore(str(tmp_path / "db.duckdb"))
+    s.upsert([_rec("A"), _rec("B"), _rec("C"), _rec("D")])
+    s.mark("A", stage="contacted")
+    s.mark("B", stage="qualified")
+    s.mark("C", stage="won")  # closed -> never nagged about
+    s.set_follow_up("A", days=-1)  # overdue -> DUE
+    # B has no follow-up -> STALE; D is not on the list; C is closed.
+    q = s.follow_up_queue(stale_days=-1)  # future cutoff: any past lead counts as stale
+    assert {r["place_id"] for r in q["due"]} == {"A"}
+    assert {r["place_id"] for r in q["stale"]} == {"B"}
+    # scheduling a future follow-up on B takes it out of both buckets
+    s.set_follow_up("B", days=2)
+    q2 = s.follow_up_queue(stale_days=-1)
+    assert {r["place_id"] for r in q2["stale"]} == set()
+    assert {r["place_id"] for r in q2["due"]} == {"A"}
+
+
 def test_legacy_stage_migrates_on_reopen(tmp_path):
     path = str(tmp_path / "db.duckdb")
     s = LeadStore(path)

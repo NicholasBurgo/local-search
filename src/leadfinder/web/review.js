@@ -57,6 +57,8 @@
     if (hasText(l.phone)) line2.push('<a href="tel:' + esc(String(l.phone).replace(/[^0-9+]/g, "")) + '">' + esc(l.phone) + "</a>");
     if (hasText(l.email)) line2.push('<a href="mailto:' + esc(l.email) + '">email</a>');
     if (hasText(l.verification_status)) line2.push(esc(l.verification_status));
+    const fu = l.next_follow_up && window.LeadDetail ? window.LeadDetail.followState(l.next_follow_up) : null;
+    const fuBadge = fu ? '<div class="pcard-fu' + (fu.due ? " due" : "") + '">' + esc(fu.text) + "</div>" : "";
     return (
       '<div class="pcard" draggable="true" data-k="' + esc(l.place_id) + '">' +
         '<div class="pcard-top">' +
@@ -66,6 +68,7 @@
         "</div>" +
         (line1 ? '<div class="pcard-meta">' + line1 + "</div>" : "") +
         (line2.length ? '<div class="pcard-meta">' + line2.join(" &middot; ") + "</div>" : "") +
+        fuBadge +
         '<div class="pcard-acts">' + moves + "</div>" +
       "</div>"
     );
@@ -160,6 +163,12 @@
     wrap.addEventListener("click", (e) => {
       const mv = e.target.closest(".mv"); if (mv) { move(mv.dataset.k, mv.dataset.to); return; }
       const rm = e.target.closest(".pcard-rm"); if (rm) { move(rm.dataset.rm, ""); return; }
+      if (e.target.closest("a")) return;  // let tel:/mailto: links work
+      const card = e.target.closest(".pcard");
+      if (card && window.LeadDetail) {
+        const l = leads.find((x) => x.place_id === card.dataset.k);
+        if (l) window.LeadDetail.open(l, () => load());  // reload the board after changes
+      }
     });
     $("archive-btn").addEventListener("click", () => { showArchive = !showArchive; render(); });
     $("refresh-btn").addEventListener("click", load);

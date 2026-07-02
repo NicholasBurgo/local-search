@@ -1,7 +1,10 @@
 from leadfinder.config import Settings
 from leadfinder.models import Lead
 from leadfinder.server import (
+    activities_endpoint,
+    activity_endpoint,
     config_endpoint,
+    follow_up_endpoint,
     geocode_endpoint,
     mark_endpoint,
     read_static,
@@ -10,6 +13,7 @@ from leadfinder.server import (
     search_endpoint,
     stats_endpoint,
     suggest_endpoint,
+    today_endpoint,
     verify_endpoint,
 )
 from leadfinder.store import LeadStore
@@ -121,6 +125,9 @@ def test_read_static_serves_frontend():
     assert read_static("/leaflet.js") is not None
     assert read_static("/review") is not None  # review page
     assert read_static("/review.js") is not None
+    assert read_static("/today") is not None  # follow-up queue
+    assert read_static("/today.js") is not None
+    assert read_static("/detail.js") is not None  # shared lead drawer
     assert read_static("/nope") is None  # not whitelisted
 
 
@@ -183,6 +190,36 @@ def test_reverify_endpoint(tmp_path):
     out = reverify_endpoint({}, _settings(), store, verifier=fake_verify)
     assert out["count"] == 1
     assert store.get(["P1"])["P1"]["verification_status"] == "REMOVED_HAS_WEBSITE"
+
+
+def test_activity_and_timeline_endpoints(tmp_path):
+    store = LeadStore(str(tmp_path / "db.duckdb"))
+    store.upsert([{"place_id": "P1", "name": "Joe", "source": "overture"}])
+    out = activity_endpoint(
+        {"place_id": "P1", "type": "call", "body": "vm", "follow_up_days": 2}, store
+    )
+    assert out["activity"]["type"] == "call" and out["next_follow_up"] is not None
+    # an unknown type falls back to "note" rather than storing junk
+    assert (
+        activity_endpoint({"place_id": "P1", "type": "smoke", "body": "x"}, store)["activity"][
+            "type"
+        ]
+        == "note"
+    )
+    tl = activities_endpoint({"place_id": "P1"}, store)["activities"]
+    assert tl[0]["body"] == "x" and tl[1]["body"] == "vm"  # newest first
+    assert "error" in activity_endpoint({}, store)  # missing place_id
+
+
+def test_follow_up_and_today_endpoints(tmp_path):
+    store = LeadStore(str(tmp_path / "db.duckdb"))
+    store.upsert([{"place_id": "P1", "name": "Joe", "source": "overture"}])
+    store.mark("P1", stage="contacted")
+    follow_up_endpoint({"place_id": "P1", "days": -1}, store)  # overdue -> due
+    assert {r["place_id"] for r in today_endpoint({"stale_days": "3"}, store)["due"]} == {"P1"}
+    out = follow_up_endpoint({"place_id": "P1", "clear": True}, store)
+    assert out["ok"] is True and out["next_follow_up"] is None
+    assert today_endpoint({}, store)["due"] == []  # no longer due once cleared
 
 
 def test_verify_endpoint():

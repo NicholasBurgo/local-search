@@ -23,7 +23,7 @@ from .geo import bbox_center, bbox_from_center
 from .geocode import city_bbox, suggest_places
 from .logging_setup import get_logger
 from .sources.overture import fetch_overture_bbox
-from .store import LeadStore
+from .store import ACTIVITY_TYPES, LeadStore
 from .verify import verify_rows
 
 _WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
@@ -35,9 +35,13 @@ _STATIC: dict[str, tuple[str, str, str]] = {
     "/index.html": ("index.html", _WEB_DIR, "text/html; charset=utf-8"),
     "/review": ("review.html", _WEB_DIR, "text/html; charset=utf-8"),
     "/review.html": ("review.html", _WEB_DIR, "text/html; charset=utf-8"),
+    "/today": ("today.html", _WEB_DIR, "text/html; charset=utf-8"),
+    "/today.html": ("today.html", _WEB_DIR, "text/html; charset=utf-8"),
     "/app.css": ("app.css", _WEB_DIR, "text/css; charset=utf-8"),
     "/app.js": ("app.js", _WEB_DIR, "text/javascript; charset=utf-8"),
     "/review.js": ("review.js", _WEB_DIR, "text/javascript; charset=utf-8"),
+    "/today.js": ("today.js", _WEB_DIR, "text/javascript; charset=utf-8"),
+    "/detail.js": ("detail.js", _WEB_DIR, "text/javascript; charset=utf-8"),
     "/leaflet.css": ("leaflet.css", _ASSETS_DIR, "text/css; charset=utf-8"),
     "/leaflet.js": ("leaflet.js", _ASSETS_DIR, "text/javascript; charset=utf-8"),
 }
@@ -199,6 +203,56 @@ def stats_endpoint(store) -> dict:
     return store.stats()
 
 
+def activity_endpoint(payload: dict, store) -> dict:
+    """Log a call/email/note/meeting, optionally scheduling the next follow-up."""
+    place_id = payload.get("place_id")
+    if not place_id:
+        return {"error": "missing place_id"}
+    kind = (payload.get("type") or "note").strip().lower()
+    if kind not in ACTIVITY_TYPES:
+        kind = "note"
+    activity = store.log_activity(place_id, kind, payload.get("body") or "")
+    follow = None
+    days = payload.get("follow_up_days")
+    if days not in (None, ""):
+        try:
+            follow = store.set_follow_up(place_id, int(days))
+        except (ValueError, TypeError):
+            follow = None
+    return {"activity": activity, "next_follow_up": follow}
+
+
+def activities_endpoint(params: dict, store) -> dict:
+    place_id = params.get("place_id")
+    if not place_id:
+        return {"activities": []}
+    return {"activities": store.activities_for(place_id)}
+
+
+def follow_up_endpoint(payload: dict, store) -> dict:
+    place_id = payload.get("place_id")
+    if not place_id:
+        return {"error": "missing place_id"}
+    days = payload.get("days")
+    if payload.get("clear") or days in (None, ""):
+        nxt = store.set_follow_up(place_id, None)
+    else:
+        try:
+            nxt = store.set_follow_up(place_id, int(days))
+        except (ValueError, TypeError):
+            return {"error": "invalid days"}
+    return {"ok": True, "next_follow_up": nxt}
+
+
+def today_endpoint(params: dict, store) -> dict:
+    days = 3
+    try:
+        days = int(params.get("stale_days")) if params.get("stale_days") else 3
+    except (ValueError, TypeError):
+        days = 3
+    return store.follow_up_queue(stale_days=days)
+
+
 def verify_endpoint(payload: dict, settings: Settings, *, verifier=None) -> dict:
     rows = payload.get("leads") or []
     if not rows:
@@ -246,6 +300,12 @@ def make_handler(settings: Settings, store: LeadStore):
                 self._send(200, saved_endpoint(params, store))
             elif route.path == "/api/stats":
                 self._send(200, stats_endpoint(store))
+            elif route.path == "/api/activities":
+                params = {k: v[0] for k, v in parse_qs(route.query).items()}
+                self._send(200, activities_endpoint(params, store))
+            elif route.path == "/api/today":
+                params = {k: v[0] for k, v in parse_qs(route.query).items()}
+                self._send(200, today_endpoint(params, store))
             else:
                 self._send(404, {"error": "not found"})
 
@@ -265,6 +325,10 @@ def make_handler(settings: Settings, store: LeadStore):
                 self._send(200, reverify_endpoint(payload, settings, store))
             elif route.path == "/api/mark":
                 self._send(200, mark_endpoint(payload, store))
+            elif route.path == "/api/activity":
+                self._send(200, activity_endpoint(payload, store))
+            elif route.path == "/api/follow-up":
+                self._send(200, follow_up_endpoint(payload, store))
             else:
                 self._send(404, {"error": "not found"})
 

@@ -36,6 +36,10 @@
     .pcard-meta { color:var(--muted); font-size:12px; margin:4px 0 0; line-height:1.5; }
     .pcard-meta a { color:var(--accent); text-decoration:none; }
     .pcard-meta a:hover { text-decoration:underline; }
+    .pcard-fu { font-size:11.5px; color:var(--muted); margin-top:7px; display:inline-flex; align-items:center; gap:6px; }
+    .pcard-fu::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--muted); }
+    .pcard-fu.due { color:var(--mid); font-weight:600; }
+    .pcard-fu.due::before { background:var(--mid); }
     .pcard-acts { display:flex; gap:6px; flex-wrap:wrap; margin-top:9px; }
     .mv { font-size:11.5px; padding:4px 9px; border-radius:7px; border:1px solid var(--line);
           background:var(--card); color:var(--muted); cursor:pointer; }
@@ -68,6 +72,7 @@
         <div class="nav-menu">
           <a href="/"><span class="mdot"></span> Map</a>
           <a href="/review" class="active"><span class="mdot"></span> List</a>
+          <a href="/today"><span class="mdot"></span> Today</a>
         </div>
       </div>
       <button id="theme-btn" class="iconbtn" type="button" title="Toggle light/dark">&#9681;</button>
@@ -91,6 +96,7 @@
     <section id="archive" class="archive" hidden></section>
   </main>
 
+  <script src="/detail.js"></script>
   <script src="/review.js"></script>
 </body>
 </html>

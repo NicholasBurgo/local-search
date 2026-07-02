@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import threading
+from datetime import datetime, timedelta
 
 import duckdb
 
@@ -49,6 +50,9 @@ _INSERT_COLS = [
 # Sales-pipeline stages a lead moves through. None = not on the list; "new" is
 # where a lead lands when added from the map; "won"/"lost" are the closed states.
 STAGES = ("new", "contacted", "qualified", "proposal_sent", "negotiating", "won", "lost")
+# Open deals still worth working (the follow-up queue only nags about these).
+ACTIVE_STAGES = ("new", "contacted", "qualified", "proposal_sent", "negotiating")
+ACTIVITY_TYPES = ("call", "email", "note", "meeting")
 
 # Remap the earlier triage stages onto the pipeline so existing rows stay valid.
 _STAGE_MIGRATION = {
@@ -88,6 +92,19 @@ _UPSERT_SQL = (
 # "listed" = everything on the board; one exact-match filter per pipeline stage.
 _FILTERS = {"listed": "stage IS NOT NULL"}
 _FILTERS.update({stage: f"stage = '{stage}'" for stage in STAGES})
+
+# Activity timeline (calls/emails/notes/meetings) + a per-lead follow-up reminder.
+_ACTIVITY_SCHEMA = (
+    "CREATE SEQUENCE IF NOT EXISTS activity_id_seq START 1",
+    "CREATE TABLE IF NOT EXISTS activities ("
+    "  id BIGINT PRIMARY KEY, place_id VARCHAR, type VARCHAR, body VARCHAR, created_at TIMESTAMP"
+    ")",
+)
+# Newest last activity per lead, for the "gone stale" query and the queue display.
+_LAST_ACTIVITY = (
+    "LEFT JOIN (SELECT place_id, max(created_at) AS last_activity "
+    "FROM activities GROUP BY place_id) la ON la.place_id = l.place_id"
+)
 
 _UNSET = object()
 
@@ -149,6 +166,10 @@ class LeadStore:
         # Remap any legacy triage stages onto the current pipeline (idempotent).
         for old, new in _STAGE_MIGRATION.items():
             self._con.execute("UPDATE leads SET stage = ? WHERE stage = ?", [new, old])
+        # Follow-up reminder per lead + the activity timeline table.
+        self._con.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_follow_up TIMESTAMP")
+        for stmt in _ACTIVITY_SCHEMA:
+            self._con.execute(stmt)
 
     def close(self) -> None:
         with self._lock:
@@ -236,3 +257,64 @@ class LeadStore:
         for stage in STAGES:
             out[stage] = counts.get(stage, 0)
         return out
+
+    # ---- activities + follow-ups ----
+
+    def log_activity(self, place_id: str, kind: str, body: str) -> dict:
+        """Append a call/email/note/meeting to a lead's timeline; return the row."""
+        now = datetime.now()
+        with self._lock:
+            self._con.execute(
+                "INSERT INTO activities (id, place_id, type, body, created_at) "
+                "VALUES (nextval('activity_id_seq'), ?, ?, ?, ?)",
+                [place_id, kind, body or "", now],
+            )
+            cur = self._con.execute(
+                "SELECT * FROM activities WHERE place_id = ? ORDER BY id DESC LIMIT 1", [place_id]
+            )
+            return self._records(cur)[0]
+
+    def activities_for(self, place_id: str) -> list[dict]:
+        with self._lock:
+            cur = self._con.execute(
+                "SELECT * FROM activities WHERE place_id = ? ORDER BY created_at DESC, id DESC",
+                [place_id],
+            )
+            return self._records(cur)
+
+    def set_follow_up(self, place_id: str, days=None) -> str | None:
+        """Set the next-follow-up to now + `days` (int), or clear it when days is None."""
+        when = None if days is None else datetime.now() + timedelta(days=int(days))
+        with self._lock:
+            self._con.execute(
+                "UPDATE leads SET next_follow_up = ?, last_updated = now() WHERE place_id = ?",
+                [when, place_id],
+            )
+        return when.isoformat() if when else None
+
+    def follow_up_queue(self, stale_days: int = 3) -> dict:
+        """The 'today' view: follow-ups due/overdue, and active deals gone quiet."""
+        now = datetime.now()
+        cutoff = now - timedelta(days=stale_days)
+        active = ", ".join(f"'{s}'" for s in ACTIVE_STAGES)
+        base = (
+            f"SELECT l.*, la.last_activity FROM leads l {_LAST_ACTIVITY} "
+            f"WHERE l.stage IN ({active})"
+        )
+        with self._lock:
+            due = self._records(
+                self._con.execute(
+                    f"{base} AND l.next_follow_up IS NOT NULL AND l.next_follow_up <= ? "
+                    "ORDER BY l.next_follow_up",
+                    [now],
+                )
+            )
+            stale = self._records(
+                self._con.execute(
+                    f"{base} AND l.next_follow_up IS NULL "
+                    "AND coalesce(la.last_activity, l.first_seen) <= ? "
+                    "ORDER BY coalesce(la.last_activity, l.first_seen)",
+                    [cutoff],
+                )
+            )
+        return {"due": due, "stale": stale, "stale_days": stale_days}
