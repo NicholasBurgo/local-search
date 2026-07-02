@@ -80,7 +80,7 @@
       m.addTo(LAYER); markers[k] = m;
     });
     if (RING) { MAP.removeLayer(RING); RING = null; }
-    if (state.center) RING = L.circle(state.center, { radius: state.radius * 1609.34, color: "#0E6B5C", weight: 1, fill: false, dashArray: "5,5" }).addTo(MAP);
+    if (state.center) RING = L.circle(state.center, { radius: state.radius * 1609.34, color: "#0E6B5C", weight: 1, fill: false, dashArray: "5,5", interactive: false }).addTo(MAP);
     if (fit && pts.length) { try { MAP.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 15 }); } catch (e) {} }
     else if (fit && state.center) MAP.setView(state.center, 12);
   }
@@ -253,5 +253,7 @@
     if (focus !== null) { const l = visible()[Number(focus) || 0]; if (l) selectLead(keyOf(l), false); }
   }
 
+  // Debug/console hooks (harmless): window.leadfinder.map / .markers / .state
+  window.leadfinder = { get map() { return MAP; }, get markers() { return markers; }, get state() { return state; }, select: selectLead };
   document.addEventListener("DOMContentLoaded", boot);
 })();
