@@ -1,22 +1,35 @@
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
   function hasText(v) { return String(v == null ? "" : v).trim() !== ""; }
   function pillCls(q) { const n = Number(q) || 0; return n >= 70 ? "hi" : n >= 40 ? "mid" : "lo"; }
+  function telHref(p) { return "tel:" + String(p).replace(/[^0-9+]/g, ""); }
 
   async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
-  function post(path, body) { return api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+  function post(path, body) {
+    return api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  }
 
-  let leads = [], idx = 0, filter = "undecided", stats = {};
+  let leads = [], filter = "undecided", stats = {};
+  const list = $("list");
+
+  function matches(l) {
+    if (filter === "keep") return l.decision === "keep";
+    if (filter === "reject") return l.decision === "reject";
+    if (filter === "undecided") return !l.decision;
+    return true; // all
+  }
 
   async function load() {
     const res = await api("/api/saved?filter=" + encodeURIComponent(filter));
     leads = res.leads || [];
     stats = res.stats || {};
-    idx = 0;
     renderCounts();
-    render();
+    renderList();
   }
 
   function renderCounts() {
@@ -27,80 +40,92 @@
     $("progress-fill").style.width = (total ? (done / total) * 100 : 0).toFixed(1) + "%";
   }
 
-  function current() { return leads[idx]; }
+  function metaHtml(l) {
+    const line1 = [], line2 = [];
+    if (hasText(l.category)) line1.push('<span style="text-transform:capitalize">' + esc(String(l.category).replace(/_/g, " ")) + "</span>");
+    if (hasText(l.address)) line1.push(esc(l.address));
+    else if (hasText(l.city)) line1.push(esc(l.city));
+    if (hasText(l.phone)) line2.push('<a href="' + esc(telHref(l.phone)) + '">' + esc(l.phone) + "</a>");
+    if (hasText(l.email)) line2.push('<a href="mailto:' + esc(l.email) + '">' + esc(l.email) + "</a>");
+    if (hasText(l.socials)) line2.push('<a href="' + esc(String(l.socials).split("|")[0]) + '" target="_blank" rel="noopener">social</a>');
+    if (hasText(l.verification_status)) line2.push(esc(l.verification_status));
+    let h = "";
+    if (line1.length) h += '<div class="meta">' + line1.join('<span class="sep">&middot;</span>') + "</div>";
+    if (line2.length) h += '<div class="meta">' + line2.join('<span class="sep">&middot;</span>') + "</div>";
+    return h;
+  }
 
-  function render() {
-    const l = current();
-    $("pos").textContent = leads.length ? (idx + 1) + " of " + leads.length : "";
-    if (!l) {
-      $("rev-card").innerHTML = '<div class="rev-done"><h2>All done</h2><p>No leads left in "' + esc(filter) + '". Switch the filter above, or head back to the map to find more.</p></div>';
+  function rowHtml(l) {
+    const dec = l.decision || "";
+    const chip = dec ? ' <span class="chip ' + dec + '">' + esc(dec) + "</span>" : "";
+    return (
+      '<div class="row ' + dec + '" data-k="' + esc(l.place_id) + '">' +
+        '<div class="info">' +
+          '<div class="name">' + esc(l.name) +
+            ' <span class="pill ' + pillCls(l.quality) + '">' + esc(l.quality) + "</span>" + chip +
+          "</div>" + metaHtml(l) +
+        "</div>" +
+        '<div class="acts">' +
+          '<button class="mk keep' + (dec === "keep" ? " on" : "") + '" data-act="keep" title="Keep (K)">&#10003;<span class="lbl">Keep</span></button>' +
+          '<button class="mk reject' + (dec === "reject" ? " on" : "") + '" data-act="reject" title="Reject (X)">&#10007;<span class="lbl">Reject</span></button>' +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function renderList() {
+    $("count").textContent = leads.length + (leads.length === 1 ? " lead" : " leads");
+    if (!leads.length) {
+      list.innerHTML = '<div class="rev-empty"><h2>Nothing here</h2><p>No leads in "' + esc(filter) +
+        '". Switch the filter above, or head to the map to pull more.</p></div>';
       return;
     }
-    const meta = [l.category || "business", l.source, (l.confidence !== "" && l.confidence != null) ? "conf " + l.confidence : null, l.verification_status].filter(Boolean).map(esc).join(" &middot; ");
-    let h = '<div class="rev-name">' + esc(l.name) + ' <span class="pill ' + pillCls(l.quality) + '">' + esc(l.quality) + "</span>";
-    if (l.decision) h += ' <span class="chip">' + esc(l.decision) + "</span>";
-    h += "</div><div class=\"rev-meta\">" + meta + "</div>";
-    if (hasText(l.address)) h += '<div class="rev-row"><span class="rev-label">Address</span>' + esc(l.address) + "</div>";
-    if (hasText(l.phone)) h += '<div class="rev-row"><span class="rev-label">Phone</span><a href="tel:' + esc(String(l.phone).replace(/[^0-9+]/g, "")) + '">' + esc(l.phone) + "</a></div>";
-    if (hasText(l.email)) h += '<div class="rev-row"><span class="rev-label">Email</span><a href="mailto:' + esc(l.email) + '">' + esc(l.email) + "</a></div>";
-    if (hasText(l.socials)) h += '<div class="rev-row"><span class="rev-label">Socials</span>' + esc(String(l.socials).split("|")[0]) + "</div>";
-    if (hasText(l.city)) h += '<div class="rev-row"><span class="rev-label">Area</span>' + esc(l.city) + "</div>";
-    $("rev-card").innerHTML = h;
+    list.innerHTML = leads.map(rowHtml).join("");
   }
 
-  async function decide(decision) {
-    const l = current();
+  async function mark(k, act) {
+    const l = leads.find((x) => x.place_id === k);
     if (!l) return;
-    await post("/api/mark", { place_id: l.place_id, decision });
-    const was = l.decision;
+    const decision = l.decision === act ? "" : act; // click active again -> undo
     l.decision = decision;
-    // keep the counts in sync locally (server is source of truth on next load)
-    if (was !== decision) {
-      if (was === "keep") stats.keep = Math.max(0, (stats.keep || 0) - 1);
-      if (was === "reject") stats.reject = Math.max(0, (stats.reject || 0) - 1);
-      if (!was) stats.undecided = Math.max(0, (stats.undecided || 0) - 1);
-      if (decision === "keep") stats.keep = (stats.keep || 0) + 1;
-      if (decision === "reject") stats.reject = (stats.reject || 0) + 1;
-      renderCounts();
+    const res = await post("/api/mark", { place_id: k, decision });
+    if (res && res.stats) { stats = res.stats; renderCounts(); }
+    const row = list.querySelector('.row[data-k="' + (window.CSS && CSS.escape ? CSS.escape(k) : k) + '"]');
+    if (matches(l)) {
+      // update in place
+      if (row) row.outerHTML = rowHtml(l);
+    } else {
+      // no longer in this filter -> drop from the list
+      leads = leads.filter((x) => x.place_id !== k);
+      if (row) row.remove();
+      $("count").textContent = leads.length + (leads.length === 1 ? " lead" : " leads");
+      if (!leads.length) renderList();
     }
-    if (filter === "undecided") {
-      leads.splice(idx, 1);
-      if (idx >= leads.length) idx = Math.max(0, leads.length - 1);
-    } else if (idx < leads.length - 1) {
-      idx++;
-    }
-    render();
   }
-
-  function skip() { if (leads.length) { idx = (idx + 1) % leads.length; render(); } }
-  function prev() { if (idx > 0) { idx--; render(); } }
 
   function initTheme() {
     let theme = null;
-    try { theme = localStorage.getItem("lf.theme"); } catch (e) {}
-    if (theme) { try { theme = JSON.parse(theme); } catch (e) {} }
-    if (!theme) { try { theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; } catch (e) { theme = "light"; } }
+    try { theme = localStorage.getItem("lf.theme"); } catch (e) { /* ignore */ }
+    if (theme) { try { theme = JSON.parse(theme); } catch (e) { /* raw string */ } }
+    if (!theme) {
+      try { theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
+      catch (e) { theme = "light"; }
+    }
     document.documentElement.setAttribute("data-theme", theme);
     $("theme-btn").addEventListener("click", () => {
       theme = theme === "dark" ? "light" : "dark";
-      try { localStorage.setItem("lf.theme", JSON.stringify(theme)); } catch (e) {}
+      try { localStorage.setItem("lf.theme", JSON.stringify(theme)); } catch (e) { /* ignore */ }
       document.documentElement.setAttribute("data-theme", theme);
     });
   }
 
   function wire() {
-    $("keep-btn").addEventListener("click", () => decide("keep"));
-    $("reject-btn").addEventListener("click", () => decide("reject"));
-    $("skip-btn").addEventListener("click", skip);
-    $("prev-btn").addEventListener("click", prev);
     $("filter").addEventListener("change", (e) => { filter = e.target.value; load(); });
-    document.addEventListener("keydown", (e) => {
-      if (e.target && (e.target.tagName === "SELECT" || e.target.tagName === "INPUT")) return;
-      const k = e.key;
-      if (k === "k" || k === "K" || k === "ArrowRight") { e.preventDefault(); decide("keep"); }
-      else if (k === "x" || k === "X" || k === "ArrowLeft") { e.preventDefault(); decide("reject"); }
-      else if (k === "s" || k === "S" || k === " ") { e.preventDefault(); skip(); }
-      else if (k === "Backspace") { e.preventDefault(); prev(); }
+    list.addEventListener("click", (e) => {
+      const btn = e.target.closest(".mk");
+      if (!btn) return;
+      const row = btn.closest(".row");
+      if (row) mark(row.dataset.k, btn.dataset.act);
     });
   }
 
