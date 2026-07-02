@@ -23,26 +23,48 @@ body {
 .muted { color:var(--muted); font-size:12px; }
 :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
 
-/* ---- app bar (global nav: brand + pages + account/theme) ---- */
+/* ---- top navbar (brand left, sections pushed right) ---- */
 .appbar {
-  flex:none; height:52px; display:flex; align-items:center; gap:22px; padding:0 16px;
-  background:var(--card); border-bottom:1px solid var(--line); position:relative; z-index:30;
+  flex:none; height:62px; display:flex; align-items:center; gap:16px; padding:0 18px;
+  background:var(--card); border-bottom:1px solid var(--line); position:relative; z-index:1100;
 }
-.brand-block { display:flex; align-items:center; gap:9px; text-decoration:none; color:var(--ink); }
+.brand-block { display:flex; align-items:center; gap:11px; text-decoration:none; color:var(--ink); }
 .brand-block:hover { text-decoration:none; }
-.logo { width:24px; height:24px; display:block; color:var(--accent); flex:none; }
+.logo { width:26px; height:26px; display:block; color:var(--accent); flex:none; }
 .logo .dot { fill:var(--card); }
-.appnav { display:flex; align-items:center; gap:4px; }
-.navlink {
-  text-decoration:none; color:var(--muted); font-size:14px; font-weight:600; line-height:1;
-  padding:8px 14px; border-radius:8px;
+.brand-lines { display:flex; flex-direction:column; line-height:1.15; }
+.brand {
+  font-family:Charter,"Bitstream Charter",Georgia,serif; font-size:18px; font-weight:700;
+  letter-spacing:.2px; white-space:nowrap;
 }
-.navlink:hover { color:var(--ink); background:var(--accent-soft); text-decoration:none; }
-.navlink.active { color:var(--accent); background:var(--accent-soft); }
-.appbar-right { display:flex; align-items:center; gap:8px; }
+.brand-sub { font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:1.6px; font-weight:600; }
+.appbar-spacer { flex:1; }
+.appbar-right { display:flex; align-items:center; gap:10px; }
+
+/* section dropdown (opens on hover or keyboard focus, no JS needed) */
+.nav-dd { position:relative; }
+.nav-trigger {
+  display:inline-flex; align-items:center; gap:7px; background:transparent; border:1px solid var(--line);
+  color:var(--ink); font-size:14px; font-weight:600; padding:9px 14px; border-radius:9px; cursor:pointer; line-height:1;
+}
+.nav-trigger:hover, .nav-dd:focus-within .nav-trigger { border-color:var(--muted); background:var(--accent-soft); }
+.nav-trigger .caret { font-size:9px; color:var(--muted); }
+.nav-menu {
+  position:absolute; right:0; top:calc(100% + 8px); min-width:190px; background:var(--card);
+  border:1px solid var(--line); border-radius:11px; box-shadow:0 10px 30px rgba(0,0,0,.16); padding:6px;
+  display:none; z-index:50;
+}
+.nav-dd:hover .nav-menu, .nav-dd:focus-within .nav-menu { display:block; }
+.nav-menu a {
+  display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:8px;
+  text-decoration:none; color:var(--ink); font-size:13.5px; font-weight:500; white-space:nowrap;
+}
+.nav-menu a:hover { background:var(--accent-soft); text-decoration:none; }
+.nav-menu a.active { color:var(--accent); background:var(--accent-soft); font-weight:600; }
+.mdot { width:5px; height:5px; border-radius:50%; background:currentColor; flex:none; opacity:.55; }
 .iconbtn {
-  background:transparent; border:1px solid var(--line); color:var(--muted); border-radius:8px;
-  padding:7px 10px; font-size:16px; line-height:1; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; background:transparent; border:1px solid var(--line);
+  color:var(--muted); border-radius:9px; padding:8px 10px; font-size:16px; line-height:1; cursor:pointer;
 }
 .iconbtn:hover { color:var(--ink); border-color:var(--muted); }
 
@@ -54,10 +76,6 @@ body {
 .tb-sep { width:1px; align-self:stretch; margin:14px 2px; background:var(--line); }
 .page-title {
   font-family:Charter,"Bitstream Charter",Georgia,serif; font-size:16px; font-weight:700; color:var(--ink);
-}
-.brand {
-  font-family:Charter,"Bitstream Charter",Georgia,serif; font-size:19px; font-weight:700;
-  letter-spacing:.2px; white-space:nowrap;
 }
 .search { position:relative; flex:1; min-width:180px; max-width:440px; }
 .search input {

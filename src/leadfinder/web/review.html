@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Leadfinder - Pipeline</title>
+  <title>Lux Protocol - List</title>
   <link rel="stylesheet" href="/app.css">
   <style>
     body { overflow:auto; height:auto; }
@@ -15,7 +15,7 @@
     .board-wrap { padding:14px 18px 50px; }
     .board { display:flex; gap:14px; align-items:flex-start; overflow-x:auto; }
     .col { flex:1 1 0; min-width:250px; background:rgba(127,127,127,.06); border:1px solid var(--line);
-           border-radius:14px; display:flex; flex-direction:column; max-height:calc(100vh - 210px); }
+           border-radius:14px; display:flex; flex-direction:column; max-height:calc(100vh - 190px); }
     .col.drop { outline:2px dashed var(--accent); outline-offset:-2px; }
     .col-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px 10px; }
     .col-title { font-weight:700; font-size:14px; }
@@ -56,20 +56,26 @@
         <path d="M12 2C7.9 2 4.6 5.3 4.6 9.4c0 5.3 6.4 11.6 6.7 11.9.4.4 1 .4 1.4 0 .3-.3 6.7-6.6 6.7-11.9C19.4 5.3 16.1 2 12 2z" fill="currentColor"/>
         <circle class="dot" cx="12" cy="9.4" r="2.6"/>
       </svg>
-      <span class="brand">Leadfinder</span>
+      <span class="brand-lines">
+        <span class="brand">Lux Protocol</span>
+        <span class="brand-sub">Sales</span>
+      </span>
     </a>
-    <nav class="appnav">
-      <a class="navlink" href="/">Map</a>
-      <a class="navlink active" href="/review">Pipeline</a>
-    </nav>
-    <div style="flex:1"></div>
-    <div class="appbar-right">
+    <div class="appbar-spacer"></div>
+    <nav class="appbar-right">
+      <div class="nav-dd">
+        <button class="nav-trigger" type="button" aria-haspopup="true">Leads <span class="caret">&#9662;</span></button>
+        <div class="nav-menu">
+          <a href="/"><span class="mdot"></span> Map</a>
+          <a href="/review" class="active"><span class="mdot"></span> List</a>
+        </div>
+      </div>
       <button id="theme-btn" class="iconbtn" type="button" title="Toggle light/dark">&#9681;</button>
-    </div>
+    </nav>
   </header>
 
   <div class="toolbar">
-    <span class="page-title">Pipeline</span>
+    <span class="page-title">List</span>
     <div style="flex:1"></div>
     <button id="archive-btn" class="btn ghost" type="button">Show archive</button>
     <button id="refresh-btn" class="btn ghost" type="button" title="Reload from server">Refresh</button>

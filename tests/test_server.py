@@ -115,7 +115,7 @@ def test_read_static_serves_frontend():
     index = read_static("/")
     assert index is not None
     body, ctype = index
-    assert b"Leadfinder" in body and "text/html" in ctype
+    assert b"Lux Protocol" in body and "text/html" in ctype
     assert read_static("/app.js") is not None
     assert read_static("/app.css") is not None
     assert read_static("/leaflet.js") is not None
